@@ -32,9 +32,18 @@ done
 if [ -f ~/.zshrc ] && ! grep -q "Windows Terminal tab title" ~/.zshrc; then
     cat >> ~/.zshrc << 'ZSHEOF'
 
-# Update Windows Terminal tab title to current git repo or directory name
+# Update Windows Terminal tab title to current git repo:branch or directory name
 function precmd() {
-  local title=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null || echo ${PWD##*/})
+  local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
+  local branch=$(git branch --show-current 2>/dev/null)
+  local title
+  if [[ -n "$repo" && -n "$branch" ]]; then
+    title="${repo}:${branch}"
+  elif [[ -n "$repo" ]]; then
+    title="$repo"
+  else
+    title="${PWD##*/}"
+  fi
   echo -ne "\033]0;${title}\007"
 }
 
@@ -47,9 +56,18 @@ fi
 if [ -f ~/.bashrc ] && ! grep -q "Windows Terminal tab title" ~/.bashrc; then
     cat >> ~/.bashrc << 'BASHEOF'
 
-# Update Windows Terminal tab title to current git repo or directory name
+# Update Windows Terminal tab title to current git repo:branch or directory name
 set_tab_title() {
-  local title=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null || basename "$PWD")
+  local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
+  local branch=$(git branch --show-current 2>/dev/null)
+  local title
+  if [[ -n "$repo" && -n "$branch" ]]; then
+    title="${repo}:${branch}"
+  elif [[ -n "$repo" ]]; then
+    title="$repo"
+  else
+    title="$(basename "$PWD")"
+  fi
   echo -ne "\033]0;${title}\007"
 }
 PROMPT_COMMAND="set_tab_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
