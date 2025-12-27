@@ -1,0 +1,21 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+*.secret
+*credentials*
+*token*
+*.key
+*.pem
+
+# Claude Code state (not config)
+.credentials.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
