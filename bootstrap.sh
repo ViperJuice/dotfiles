@@ -44,9 +44,10 @@ mkdir -p ~/.claude
 # Symlink Claude config files (ln -sf to files is safe)
 ln -sf "$DOTFILES_DIR/claude/settings.json" ~/.claude/settings.json
 ln -sf "$DOTFILES_DIR/claude/statusline-custom.sh" ~/.claude/statusline-custom.sh
+ln -sf "$DOTFILES_DIR/claude/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
-chmod +x ~/.claude/statusline-custom.sh
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh
 echo "Linked Claude config files"
 
 # WSL: Detect Windows username and symlink Screenshots folder
