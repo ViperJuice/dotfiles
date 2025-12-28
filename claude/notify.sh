@@ -6,15 +6,20 @@
 
 [[ -z "$ZELLIJ" ]] && exit 0
 
+# Read hook input from stdin (contains cwd from Claude Code)
+input=$(cat)
+cwd=$(echo "$input" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd','.'))" 2>/dev/null || echo ".")
+
 # Build title: 🔔 repo:branch (or just directory name)
-repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
-branch=$(git branch --show-current 2>/dev/null)
+# Use cwd from hook input to get the correct pane's repo, not the focused pane's
+repo=$(basename "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
 if [[ -n "$repo" && -n "$branch" ]]; then
     title="🔔 ${repo}:${branch}"
 elif [[ -n "$repo" ]]; then
     title="🔔 $repo"
 else
-    title="🔔 ${PWD##*/}"
+    title="🔔 ${cwd##*/}"
 fi
 
 # Visual: Rename pane
