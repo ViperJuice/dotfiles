@@ -21,7 +21,7 @@
     ],
     "UserPromptSubmit": [
       {
-        "hooks": [{ "type": "command", "command": "zellij action undo-rename-pane 2>/dev/null || true" }]
+        "hooks": [{ "type": "command", "command": "~/.claude/notify-clear.sh" }]
       }
     ]
   }

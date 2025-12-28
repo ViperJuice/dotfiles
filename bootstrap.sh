@@ -224,9 +224,10 @@ mkdir -p ~/.claude
 ln -sf "$DOTFILES_DIR/claude/settings.json" ~/.claude/settings.json
 ln -sf "$DOTFILES_DIR/claude/statusline-custom.sh" ~/.claude/statusline-custom.sh
 ln -sf "$DOTFILES_DIR/claude/notify.sh" ~/.claude/notify.sh
+ln -sf "$DOTFILES_DIR/claude/notify-clear.sh" ~/.claude/notify-clear.sh
 ln -sf "$DOTFILES_DIR/claude/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
-chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh
 echo "Linked Claude config files"
 
 # WSL: Detect Windows username and symlink Screenshots folder
@@ -269,7 +270,18 @@ function precmd() {
 
   # Clear Zellij notification on interaction
   if [[ -n "$ZELLIJ" ]]; then
-    zellij action undo-rename-pane 2>/dev/null
+    # Apply pending notification for this pane (if any)
+    local notify_file="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
+    if [[ -f "$notify_file" ]]; then
+      local pending_title=$(cat "$notify_file")
+      zellij action rename-pane "$pending_title" 2>/dev/null
+      rm -f "$notify_file"
+    else
+      # No pending notification, clear any existing rename
+      zellij action undo-rename-pane 2>/dev/null
+    fi
+    # Also clear tab rename
+    zellij action undo-rename-tab 2>/dev/null
   fi
 
   if [[ -n "$repo" && -n "$branch" ]]; then
@@ -295,7 +307,18 @@ set_tab_title() {
 
   # Clear Zellij notification on interaction
   if [[ -n "$ZELLIJ" ]]; then
-    zellij action undo-rename-pane 2>/dev/null
+    # Apply pending notification for this pane (if any)
+    local notify_file="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
+    if [[ -f "$notify_file" ]]; then
+      local pending_title=$(cat "$notify_file")
+      zellij action rename-pane "$pending_title" 2>/dev/null
+      rm -f "$notify_file"
+    else
+      # No pending notification, clear any existing rename
+      zellij action undo-rename-pane 2>/dev/null
+    fi
+    # Also clear tab rename
+    zellij action undo-rename-tab 2>/dev/null
   fi
 
   if [[ -n "$repo" && -n "$branch" ]]; then

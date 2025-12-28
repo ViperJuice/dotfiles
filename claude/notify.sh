@@ -1,7 +1,7 @@
 #!/bin/bash
 # Notification for Claude Code hooks
-# - Renames pane with bell emoji prepended to repo:branch
-# - Plays audio notification
+# - Stores pending pane rename (applied by precmd when pane is focused)
+# - Plays audio notification immediately
 # - Cleared by precmd when user interacts with shell
 
 [[ -z "$ZELLIJ" ]] && exit 0
@@ -22,8 +22,17 @@ else
     title="🔔 ${cwd##*/}"
 fi
 
-# Visual: Rename pane
-zellij action rename-pane "$title"
+# Store notification for this specific pane
+# Can't rename specific pane - zellij action rename-pane only targets focused pane
+NOTIFY_FILE="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
+echo "$title" > "$NOTIFY_FILE"
+
+# Visual indicator: Add bell to tab name (visible even when pane not focused)
+# Get current tab name, prepend bell if not already there
+current_tab=$(zellij action dump-layout 2>/dev/null | grep -o 'tab name="[^"]*"' | head -1 | sed 's/tab name="//;s/"//')
+if [[ -n "$current_tab" && "$current_tab" != 🔔* ]]; then
+    zellij action rename-tab "🔔 $current_tab" 2>/dev/null
+fi
 
 # Audio notification (platform-specific)
 if command -v powershell.exe &>/dev/null; then
