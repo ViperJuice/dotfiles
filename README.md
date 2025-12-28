@@ -45,6 +45,14 @@ Automatically sets your terminal tab title to `repo:branch` format when inside a
 
 Adds `claude` alias with `--dangerously-skip-permissions` flag for streamlined usage.
 
+**Notification System** (`claude/notify.sh`)
+
+When running Claude Code inside Zellij, notifications alert you when Claude needs attention:
+- Renames pane to "🔔 claude" (visible in pane frame)
+- Plays audio notification via `paplay` (native) or PowerShell beep (fallback)
+- Automatically clears when you focus the pane
+- Works inside Claude's TUI (doesn't require shell prompt)
+
 ## File Structure
 
 ```
@@ -52,7 +60,10 @@ dotfiles/
 ├── bootstrap.sh              # Installation script
 ├── claude/
 │   ├── settings.json         # Claude Code settings
-│   └── statusline-custom.sh  # Custom statusline script
+│   ├── statusline-custom.sh  # Custom statusline script
+│   ├── notify.sh             # Zellij notification script
+│   ├── CLAUDE.md             # Global Claude instructions
+│   └── AGENTS.md             # Agent-specific instructions
 ├── .env.example              # Template for secrets
 └── .gitignore                # Ignores secrets and temp files
 ```
@@ -64,14 +75,23 @@ dotfiles/
 - Git
 - [Claude Code CLI](https://github.com/anthropics/claude-code)
 
+### Optional (for Zellij notifications)
+
+- [Zellij](https://zellij.dev/) - Terminal multiplexer
+- `pulseaudio-utils` - For native audio notifications in WSL2/WSLg
+  ```bash
+  sudo apt install pulseaudio-utils
+  ```
+
 ## Installation Details
 
 The `bootstrap.sh` script:
 
 1. Creates `~/.claude/` directory if needed
-2. Symlinks Claude config files (settings.json, statusline-custom.sh)
-3. Adds the `claude` alias to your shell RC file
-4. Adds terminal tab title configuration
+2. Symlinks Claude config files (settings.json, statusline-custom.sh, notify.sh)
+3. Installs `pulseaudio-utils` if not present (for audio notifications)
+4. Adds the `claude` alias to your shell RC file
+5. Adds terminal tab title configuration with Zellij notification clearing
 
 All additions are idempotent - running bootstrap multiple times is safe.
 

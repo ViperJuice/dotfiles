@@ -70,6 +70,12 @@ if [ -d "/mnt/c/Users" ]; then
     fi
 fi
 
+# Install pulseaudio-utils for native audio notifications (WSLg)
+if command -v apt &>/dev/null && ! command -v paplay &>/dev/null; then
+    echo "Installing pulseaudio-utils for audio notifications..."
+    sudo apt install -y pulseaudio-utils 2>/dev/null || echo "Note: Install pulseaudio-utils manually for better audio: sudo apt install pulseaudio-utils"
+fi
+
 # Define shell config content
 read -r -d '' CLAUDE_CONFIG << 'EOF' || true
 # Claude Code alias with permissions bypass
@@ -85,6 +91,12 @@ function precmd() {
   local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
   local branch=$(git branch --show-current 2>/dev/null)
   local title
+
+  # Clear Zellij notification on interaction
+  if [[ -n "$ZELLIJ" ]]; then
+    zellij action undo-rename-pane 2>/dev/null
+  fi
+
   if [[ -n "$repo" && -n "$branch" ]]; then
     title="${repo}:${branch}"
   elif [[ -n "$repo" ]]; then
@@ -105,6 +117,12 @@ set_tab_title() {
   local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
   local branch=$(git branch --show-current 2>/dev/null)
   local title
+
+  # Clear Zellij notification on interaction
+  if [[ -n "$ZELLIJ" ]]; then
+    zellij action undo-rename-pane 2>/dev/null
+  fi
+
   if [[ -n "$repo" && -n "$branch" ]]; then
     title="${repo}:${branch}"
   elif [[ -n "$repo" ]]; then
