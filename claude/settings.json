@@ -18,6 +18,11 @@
       {
         "hooks": [{ "type": "command", "command": "~/.claude/notify.sh" }]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "zellij action undo-rename-pane 2>/dev/null || true" }]
+      }
     ]
   }
 }
