@@ -6,7 +6,186 @@ set -e
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Track what was installed/configured for summary
+INSTALLED=()
+CONFIGURED=()
+SKIPPED=()
+
+# Detect platform
+detect_platform() {
+    if [ -d "/mnt/c/Users" ]; then
+        echo "wsl"
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        echo "mac"
+    else
+        echo "linux"
+    fi
+}
+
+PLATFORM=$(detect_platform)
+
 echo "Installing dotfiles from $DOTFILES_DIR..."
+echo "Detected platform: $PLATFORM"
+echo ""
+
+# =============================================================================
+# Dependency Installation
+# =============================================================================
+
+install_deps() {
+    echo "Checking dependencies..."
+
+    # Git
+    if ! command -v git &>/dev/null; then
+        echo "  Installing git..."
+        if command -v apt &>/dev/null; then
+            sudo apt update && sudo apt install -y git
+            INSTALLED+=("git")
+        elif command -v brew &>/dev/null; then
+            brew install git
+            INSTALLED+=("git")
+        else
+            echo "  ⚠ Cannot install git automatically"
+            SKIPPED+=("git")
+        fi
+    else
+        echo "  ✓ git"
+    fi
+
+    # Python 3
+    if ! command -v python3 &>/dev/null; then
+        echo "  Installing python3..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y python3
+            INSTALLED+=("python3")
+        elif command -v brew &>/dev/null; then
+            brew install python3
+            INSTALLED+=("python3")
+        else
+            echo "  ⚠ Cannot install python3 automatically"
+            SKIPPED+=("python3")
+        fi
+    else
+        echo "  ✓ python3"
+    fi
+
+    # Node.js / npm (needed for Claude Code CLI)
+    if ! command -v npm &>/dev/null; then
+        echo "  Installing Node.js/npm..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y nodejs npm
+            INSTALLED+=("nodejs/npm")
+        elif command -v brew &>/dev/null; then
+            brew install node
+            INSTALLED+=("node")
+        else
+            echo "  ⚠ Cannot install npm automatically"
+            SKIPPED+=("npm")
+        fi
+    else
+        echo "  ✓ npm"
+    fi
+
+    # Claude Code CLI
+    if ! command -v claude &>/dev/null; then
+        echo "  Installing Claude Code CLI..."
+        if command -v npm &>/dev/null; then
+            npm install -g @anthropic-ai/claude-code
+            INSTALLED+=("claude-code")
+        else
+            echo "  ⚠ Cannot install Claude Code: npm not found"
+            SKIPPED+=("claude-code")
+        fi
+    else
+        echo "  ✓ claude"
+    fi
+
+    # Zellij (optional but recommended)
+    if ! command -v zellij &>/dev/null; then
+        echo "  Installing Zellij..."
+        if [[ "$PLATFORM" == "mac" ]] && command -v brew &>/dev/null; then
+            brew install zellij
+            INSTALLED+=("zellij")
+        elif command -v cargo &>/dev/null; then
+            cargo install zellij
+            INSTALLED+=("zellij")
+        else
+            echo "  ℹ Zellij: Install manually from https://zellij.dev/"
+            SKIPPED+=("zellij (optional)")
+        fi
+    else
+        echo "  ✓ zellij"
+    fi
+
+    # pulseaudio-utils (for audio on Linux/WSL)
+    if [[ "$PLATFORM" != "mac" ]]; then
+        if ! command -v paplay &>/dev/null; then
+            if command -v apt &>/dev/null; then
+                echo "  Installing pulseaudio-utils..."
+                sudo apt install -y pulseaudio-utils 2>/dev/null && INSTALLED+=("pulseaudio-utils") || SKIPPED+=("pulseaudio-utils (optional)")
+            fi
+        else
+            echo "  ✓ paplay"
+        fi
+    fi
+
+    echo ""
+}
+
+# Verify required dependencies
+verify_deps() {
+    local missing=()
+    command -v git &>/dev/null || missing+=("git")
+    command -v python3 &>/dev/null || missing+=("python3")
+    command -v claude &>/dev/null || missing+=("claude")
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo ""
+        echo "❌ ERROR: Required dependencies missing: ${missing[*]}"
+        echo ""
+        echo "Please install manually:"
+        for dep in "${missing[@]}"; do
+            case $dep in
+                git) echo "  git: sudo apt install git  OR  brew install git" ;;
+                python3) echo "  python3: sudo apt install python3  OR  brew install python3" ;;
+                claude) echo "  claude: npm install -g @anthropic-ai/claude-code" ;;
+            esac
+        done
+        echo ""
+        echo "Then re-run: ./bootstrap.sh"
+        exit 1
+    fi
+}
+
+# Authenticate Claude Code (triggers browser login if needed)
+authenticate_claude() {
+    echo "Checking Claude Code authentication..."
+
+    # Check if already authenticated by running a simple command
+    if claude --version &>/dev/null; then
+        # Try to check auth status - if this fails, we need to auth
+        if claude /doctor 2>&1 | grep -q "Authenticated"; then
+            echo "  ✓ Claude Code authenticated"
+            return 0
+        fi
+    fi
+
+    echo "  Launching Claude Code for authentication..."
+    echo "  Please complete the browser authentication when prompted."
+    echo ""
+
+    # Run claude interactively to trigger auth flow
+    claude --help &>/dev/null || true
+
+    echo ""
+    echo "  ✓ Claude Code setup initiated"
+    echo "    If not authenticated, run 'claude' to complete login"
+}
+
+install_deps
+verify_deps
+authenticate_claude
+echo ""
 
 # Helper: Add or replace a managed block in a file
 # Usage: add_managed_block <file> <block_name> <content>
@@ -70,11 +249,7 @@ if [ -d "/mnt/c/Users" ]; then
     fi
 fi
 
-# Install pulseaudio-utils for native audio notifications (WSLg)
-if command -v apt &>/dev/null && ! command -v paplay &>/dev/null; then
-    echo "Installing pulseaudio-utils for audio notifications..."
-    sudo apt install -y pulseaudio-utils 2>/dev/null || echo "Note: Install pulseaudio-utils manually for better audio: sudo apt install pulseaudio-utils"
-fi
+# (pulseaudio-utils now handled in install_deps above)
 
 # Define shell config content
 read -r -d '' CLAUDE_CONFIG << 'EOF' || true
@@ -143,5 +318,40 @@ done
 [ -f ~/.zshrc ] && add_managed_block ~/.zshrc "TABTITLE" "$ZSH_TABTITLE"
 [ -f ~/.bashrc ] && add_managed_block ~/.bashrc "TABTITLE" "$BASH_TABTITLE"
 
+# =============================================================================
+# Summary
+# =============================================================================
+
 echo ""
-echo "Dotfiles installed! Restart your shell or run: source ~/.zshrc"
+echo "✅ Dotfiles installed successfully!"
+echo ""
+
+if [ ${#INSTALLED[@]} -gt 0 ]; then
+    echo "Installed:"
+    for item in "${INSTALLED[@]}"; do
+        echo "  • $item"
+    done
+    echo ""
+fi
+
+echo "Configured:"
+echo "  • Claude Code settings → ~/.claude/"
+echo "  • Shell aliases → ~/.zshrc / ~/.bashrc"
+echo "  • Tab title → repo:branch format"
+if command -v zellij &>/dev/null; then
+    echo "  • Zellij notifications → enabled"
+fi
+
+if [ ${#SKIPPED[@]} -gt 0 ]; then
+    echo ""
+    echo "Skipped (install manually if needed):"
+    for item in "${SKIPPED[@]}"; do
+        echo "  • $item"
+    done
+fi
+
+echo ""
+echo "Platform: $PLATFORM"
+echo ""
+echo "Next step: Restart your shell"
+echo "  source ~/.zshrc  # or ~/.bashrc"

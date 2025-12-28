@@ -20,7 +20,19 @@ fi
 # Visual: Rename pane
 zellij action rename-pane "$title"
 
-# Audio: PowerShell beep
+# Audio notification (platform-specific)
 if command -v powershell.exe &>/dev/null; then
+    # WSL: PowerShell beep
     powershell.exe -NoProfile -Command '[console]::beep(800,200)' &>/dev/null &
+elif [[ "$(uname)" == "Darwin" ]] && command -v afplay &>/dev/null; then
+    # macOS: System sound
+    afplay /System/Library/Sounds/Ping.aiff &>/dev/null &
+elif command -v paplay &>/dev/null; then
+    # Linux: PulseAudio (if sound file exists)
+    for snd in /usr/share/sounds/freedesktop/stereo/bell.oga /usr/share/sounds/freedesktop/stereo/complete.oga; do
+        if [ -f "$snd" ]; then
+            paplay "$snd" &>/dev/null &
+            break
+        fi
+    done
 fi
