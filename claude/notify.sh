@@ -1,8 +1,11 @@
 #!/bin/bash
 # Notification for Claude Code hooks
-# - Stores pending pane rename (applied by precmd when pane is focused)
-# - Plays audio notification immediately
-# - Cleared by precmd when user interacts with shell
+# - Renames pane with bell icon (using --pane-id to target correct pane)
+# - Renames tab with bell icon (always visible)
+# - Plays audio notification
+#
+# NOTE: Requires Zellij with --pane-id support (PR #4570)
+# https://github.com/zellij-org/zellij/pull/4570
 
 [[ -z "$ZELLIJ" ]] && exit 0
 
@@ -11,7 +14,6 @@ input=$(cat)
 cwd=$(echo "$input" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd','.'))" 2>/dev/null || echo ".")
 
 # Build title: 🔔 repo:branch (or just directory name)
-# Use cwd from hook input to get the correct pane's repo, not the focused pane's
 repo=$(basename "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
 branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
 if [[ -n "$repo" && -n "$branch" ]]; then
@@ -22,12 +24,13 @@ else
     title="🔔 ${cwd##*/}"
 fi
 
-# Store notification for this specific pane
-# Can't rename specific pane - zellij action rename-pane only targets focused pane
-NOTIFY_FILE="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
-echo "$title" > "$NOTIFY_FILE"
+# Store notification for this pane (for clearing later)
+echo "$title" > "/tmp/zellij-notify-$ZELLIJ_PANE_ID"
 
-# Visual indicator: Add bell to tab name (visible even when pane not focused)
+# Rename this specific pane by ID
+zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null
+
+# Visual indicator: Add bell to tab name (always visible)
 # Get current tab name, prepend bell if not already there
 current_tab=$(zellij action dump-layout 2>/dev/null | grep -o 'tab name="[^"]*"' | head -1 | sed 's/tab name="//;s/"//')
 if [[ -n "$current_tab" && "$current_tab" != 🔔* ]]; then

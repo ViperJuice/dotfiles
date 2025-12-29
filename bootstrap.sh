@@ -225,9 +225,10 @@ ln -sf "$DOTFILES_DIR/claude/settings.json" ~/.claude/settings.json
 ln -sf "$DOTFILES_DIR/claude/statusline-custom.sh" ~/.claude/statusline-custom.sh
 ln -sf "$DOTFILES_DIR/claude/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude/notify-clear.sh" ~/.claude/notify-clear.sh
+ln -sf "$DOTFILES_DIR/claude/agent-pane.sh" ~/.claude/agent-pane.sh
 ln -sf "$DOTFILES_DIR/claude/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
-chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh
 echo "Linked Claude config files"
 
 # WSL: Detect Windows username and symlink Screenshots folder
@@ -252,6 +253,15 @@ fi
 
 # (pulseaudio-utils now handled in install_deps above)
 
+# Skills installation (platform-specific)
+mkdir -p ~/.claude/skills
+
+if [[ "$PLATFORM" == "wsl" ]]; then
+    # WSL-specific skills
+    ln -sf "$DOTFILES_DIR/claude/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
+    echo "Installed WSL-specific skills (wsl-screenshots)"
+fi
+
 # Define shell config content
 read -r -d '' CLAUDE_CONFIG << 'EOF' || true
 # Claude Code alias with permissions bypass
@@ -267,22 +277,6 @@ function precmd() {
   local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
   local branch=$(git branch --show-current 2>/dev/null)
   local title
-
-  # Clear Zellij notification on interaction
-  if [[ -n "$ZELLIJ" ]]; then
-    # Apply pending notification for this pane (if any)
-    local notify_file="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
-    if [[ -f "$notify_file" ]]; then
-      local pending_title=$(cat "$notify_file")
-      zellij action rename-pane "$pending_title" 2>/dev/null
-      rm -f "$notify_file"
-    else
-      # No pending notification, clear any existing rename
-      zellij action undo-rename-pane 2>/dev/null
-    fi
-    # Also clear tab rename
-    zellij action undo-rename-tab 2>/dev/null
-  fi
 
   if [[ -n "$repo" && -n "$branch" ]]; then
     title="${repo}:${branch}"
@@ -305,22 +299,6 @@ set_tab_title() {
   local branch=$(git branch --show-current 2>/dev/null)
   local title
 
-  # Clear Zellij notification on interaction
-  if [[ -n "$ZELLIJ" ]]; then
-    # Apply pending notification for this pane (if any)
-    local notify_file="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
-    if [[ -f "$notify_file" ]]; then
-      local pending_title=$(cat "$notify_file")
-      zellij action rename-pane "$pending_title" 2>/dev/null
-      rm -f "$notify_file"
-    else
-      # No pending notification, clear any existing rename
-      zellij action undo-rename-pane 2>/dev/null
-    fi
-    # Also clear tab rename
-    zellij action undo-rename-tab 2>/dev/null
-  fi
-
   if [[ -n "$repo" && -n "$branch" ]]; then
     title="${repo}:${branch}"
   elif [[ -n "$repo" ]]; then
@@ -340,6 +318,30 @@ done
 
 [ -f ~/.zshrc ] && add_managed_block ~/.zshrc "TABTITLE" "$ZSH_TABTITLE"
 [ -f ~/.bashrc ] && add_managed_block ~/.bashrc "TABTITLE" "$BASH_TABTITLE"
+
+# =============================================================================
+# Obsidian Dev Docs Sync
+# =============================================================================
+
+# Symlink sync script
+ln -sf "$DOTFILES_DIR/claude/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
+chmod +x ~/.claude/sync-obsidian-docs.sh
+
+# Create obsidian vault directory if it doesn't exist
+mkdir -p ~/code/obsidian-dev-docs
+
+# Install cron job for hourly sync (idempotent)
+CRON_CMD="0 * * * * $HOME/.claude/sync-obsidian-docs.sh --quiet"
+if ! crontab -l 2>/dev/null | grep -qF "sync-obsidian-docs.sh"; then
+    (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
+    echo "Installed hourly cron job for obsidian-docs sync"
+    CONFIGURED+=("obsidian-docs cron")
+else
+    echo "Cron job for obsidian-docs sync already installed"
+fi
+
+# Run initial sync
+~/.claude/sync-obsidian-docs.sh
 
 # =============================================================================
 # Summary

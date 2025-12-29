@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Auto-clear notification when pane is viewed
+# If this statusline is being rendered, the user can see the pane
+NOTIFY_FILE="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
+if [[ -n "$ZELLIJ_PANE_ID" && -f "$NOTIFY_FILE" ]]; then
+    # Clear notification since user is looking at this pane
+    ~/.claude/notify-clear.sh
+fi
+
 # Read JSON input from stdin
 input=$(cat)
 
@@ -87,15 +95,17 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
 import json
 import os
 import glob
+import time
 
 transcript_path = '$TRANSCRIPT_PATH'
 project_dir = '$PROJECT_DIR'
 context_size = $CONTEXT_SIZE
 
 # Track background processes
-bg_shells = {}      # tool_id -> True (started)
-bg_agents = {}      # tool_id -> agent_id
-completed_tools = set()
+bg_shells = {}           # tool_id -> True (started)
+async_agent_ids = set()  # agent_ids that are running (async launched)
+completed_agent_ids = set()  # agent_ids that have been retrieved via TaskOutput
+completed_shell_tools = set()  # tool_ids for completed shells
 
 try:
     with open(transcript_path, 'r') as f:
@@ -120,30 +130,52 @@ try:
                             if name == 'Bash' and inp.get('run_in_background'):
                                 bg_shells[tool_id] = True
 
-                            # Background Task (or any Task - they run async)
-                            if name == 'Task' and inp.get('run_in_background'):
-                                bg_agents[tool_id] = None  # agent_id comes in result
+                            # TaskOutput retrieves agent results - mark agent as completed
+                            if name == 'TaskOutput':
+                                task_id = inp.get('task_id', '')
+                                if task_id:
+                                    completed_agent_ids.add(task_id)
 
-                        # Track tool_result blocks (completions)
+                        # Track tool_result blocks for shell completions only
+                        # (Agents are tracked separately via async_agent_ids)
                         if block.get('type') == 'tool_result':
                             tool_id = block.get('tool_use_id', '')
-                            completed_tools.add(tool_id)
+                            # Only mark shell tools as completed, not agent tools
+                            if tool_id in bg_shells:
+                                # Check if this is a completion or just launch confirmation
+                                entry_result = entry.get('toolUseResult', {})
+                                if not entry_result.get('isAsync'):
+                                    completed_shell_tools.add(tool_id)
 
-                # Check for toolUseResult with agentId (background agent spawned)
+                # Check for async agent launch
                 tool_result = entry.get('toolUseResult', {})
-                if tool_result.get('agentId'):
-                    # Find which tool this agent belongs to
-                    for tid in bg_agents:
-                        if bg_agents[tid] is None:
-                            bg_agents[tid] = tool_result['agentId']
-                            break
+                if tool_result.get('status') == 'async_launched':
+                    agent_id = tool_result.get('agentId')
+                    if agent_id:
+                        async_agent_ids.add(agent_id)
 
             except:
                 pass
 
     # Calculate active background processes
-    active_shells = len([t for t in bg_shells if t not in completed_tools])
-    active_agent_ids = [bg_agents[t] for t in bg_agents if t not in completed_tools and bg_agents[t]]
+    active_shells = len([t for t in bg_shells if t not in completed_shell_tools])
+
+    # Filter agents - check if they're actually still running
+    # An agent is considered complete if:
+    # 1. TaskOutput was called for it, OR
+    # 2. Its transcript file hasn't been modified in 10+ seconds
+    active_agent_ids = []
+    for aid in async_agent_ids:
+        if aid in completed_agent_ids:
+            continue  # Explicitly completed via TaskOutput
+        # Check transcript file modification time
+        agent_file = os.path.join(project_dir, f'agent-{aid}.jsonl')
+        if os.path.exists(agent_file):
+            mtime = os.path.getmtime(agent_file)
+            age = time.time() - mtime
+            if age < 10:  # Still being written to
+                active_agent_ids.append(aid)
+        # If file doesn't exist or is stale, agent is done
 
     # Build output parts
     parts = []

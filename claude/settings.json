@@ -1,28 +1,64 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/statusline-custom.sh"
-  },
   "hooks": {
     "Notification": [
       {
         "matcher": "idle_prompt",
-        "hooks": [{ "type": "command", "command": "~/.claude/notify.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify.sh"
+          }
+        ]
       },
       {
         "matcher": "permission_prompt",
-        "hooks": [{ "type": "command", "command": "~/.claude/notify.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify.sh"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "~/.claude/notify.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify.sh"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "hooks": [{ "type": "command", "command": "~/.claude/notify-clear.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify-clear.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/agent-pane.sh"
+          }
+        ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-custom.sh"
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
   }
 }
