@@ -221,13 +221,13 @@ EOF
 mkdir -p ~/.claude
 
 # Symlink Claude config files (ln -sf to files is safe)
-ln -sf "$DOTFILES_DIR/claude/settings.json" ~/.claude/settings.json
-ln -sf "$DOTFILES_DIR/claude/statusline-custom.sh" ~/.claude/statusline-custom.sh
-ln -sf "$DOTFILES_DIR/claude/notify.sh" ~/.claude/notify.sh
-ln -sf "$DOTFILES_DIR/claude/notify-clear.sh" ~/.claude/notify-clear.sh
-ln -sf "$DOTFILES_DIR/claude/agent-pane.sh" ~/.claude/agent-pane.sh
-ln -sf "$DOTFILES_DIR/claude/AGENTS.md" ~/.claude/AGENTS.md
-ln -sf "$DOTFILES_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
+ln -sf "$DOTFILES_DIR/claude-config/settings.json" ~/.claude/settings.json
+ln -sf "$DOTFILES_DIR/claude-config/statusline-custom.sh" ~/.claude/statusline-custom.sh
+ln -sf "$DOTFILES_DIR/claude-config/notify.sh" ~/.claude/notify.sh
+ln -sf "$DOTFILES_DIR/claude-config/notify-clear.sh" ~/.claude/notify-clear.sh
+ln -sf "$DOTFILES_DIR/claude-config/agent-pane.sh" ~/.claude/agent-pane.sh
+ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
+ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh
 echo "Linked Claude config files"
 
@@ -258,7 +258,7 @@ mkdir -p ~/.claude/skills
 
 if [[ "$PLATFORM" == "wsl" ]]; then
     # WSL-specific skills
-    ln -sf "$DOTFILES_DIR/claude/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
+    ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
     echo "Installed WSL-specific skills (wsl-screenshots)"
 fi
 
@@ -324,7 +324,7 @@ done
 # =============================================================================
 
 # Symlink sync script
-ln -sf "$DOTFILES_DIR/claude/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
+ln -sf "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
 chmod +x ~/.claude/sync-obsidian-docs.sh
 
 # Create obsidian vault directory if it doesn't exist

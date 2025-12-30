@@ -118,7 +118,7 @@ Adds `claude` alias with `--dangerously-skip-permissions` flag.
 ```
 dotfiles/
 ├── bootstrap.sh              # Installation script (run this!)
-├── claude/
+├── claude-config/            # Claude Code configuration (gets symlinked to ~/.claude/)
 │   ├── settings.json         # Claude Code settings & hooks
 │   ├── statusline-custom.sh  # Custom statusline script
 │   ├── notify.sh             # Zellij notification script
@@ -137,7 +137,7 @@ dotfiles/
 
 ### Modifying the Statusline
 
-Edit `claude/statusline-custom.sh`. The script receives JSON from Claude Code via stdin and outputs formatted text.
+Edit `claude-config/statusline-custom.sh`. The script receives JSON from Claude Code via stdin and outputs formatted text.
 
 Key sections:
 - Lines 7-45: Parse JSON input (model, cost, context, etc.)
@@ -155,10 +155,10 @@ The output uses ANSI escape codes:
 
 ### Adding Skills
 
-Create a new skill directory in `claude/skills/`:
+Create a new skill directory in `claude-config/skills/`:
 
 ```
-claude/skills/my-skill/
+claude-config/skills/my-skill/
 └── SKILL.md
 ```
 
@@ -180,7 +180,7 @@ Update `bootstrap.sh` to symlink it (optionally with platform checks).
 
 To disable the tab title feature, remove or comment out the `precmd` function (Zsh) or `set_tab_title` function (Bash) from your shell RC file.
 
-To disable agent panes, remove the `PostToolUse` section from `claude/settings.json`.
+To disable agent panes, remove the `PostToolUse` section from `claude-config/settings.json`.
 
 ## Troubleshooting
 
