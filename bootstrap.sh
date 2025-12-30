@@ -253,6 +253,20 @@ fi
 
 # (pulseaudio-utils now handled in install_deps above)
 
+# Define PATH config content
+read -r -d '' PATH_CONFIG << 'EOF' || true
+# Rust/Cargo environment
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
+# Add Claude local bin to PATH
+export PATH="$HOME/.claude/local:$PATH"
+
+# Initialize nvm (Node Version Manager)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+EOF
+
 # Skills installation (platform-specific)
 mkdir -p ~/.claude/skills
 
@@ -265,7 +279,7 @@ fi
 # Define shell config content
 read -r -d '' CLAUDE_CONFIG << 'EOF' || true
 # Claude Code alias with permissions bypass
-alias claude="claude --dangerously-skip-permissions"
+alias claude="claude --allow-dangerously-skip-permissions"
 
 # Prevent Claude Code from overwriting terminal tab title
 export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
@@ -313,6 +327,7 @@ EOF
 
 # Add managed blocks to shell configs
 for rc in ~/.bashrc ~/.zshrc; do
+    [ -f "$rc" ] && add_managed_block "$rc" "PATH_CONFIG" "$PATH_CONFIG"
     [ -f "$rc" ] && add_managed_block "$rc" "CLAUDE_CONFIG" "$CLAUDE_CONFIG"
 done
 
