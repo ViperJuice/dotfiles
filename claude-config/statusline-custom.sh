@@ -13,21 +13,33 @@ input=$(cat)
 
 # Extract all values using Python
 eval $(python3 -c "
-import json, shlex, os
+import json, shlex, os, sys
 
 try:
     d = json.loads('''$input''')
 
-    # Basic fields
-    model = d.get('model', {}).get('display_name', '?')
-    cwd = d.get('cwd', d.get('workspace', {}).get('current_dir', '.'))
-    cost = d.get('cost', {}).get('total_cost_usd', 0)
+    # Debug: log input to file for troubleshooting
+    with open('/tmp/statusline-debug.log', 'a') as f:
+        f.write(json.dumps(d, indent=2) + '\n---\n')
+
+    # Basic fields with multiple fallback paths
+    model_obj = d.get('model', {})
+    if isinstance(model_obj, dict):
+        model = model_obj.get('display_name') or model_obj.get('name', '?')
+    else:
+        model = str(model_obj) if model_obj else '?'
+
+    cwd = d.get('cwd') or d.get('workspace', {}).get('current_dir', '.')
+
+    cost_obj = d.get('cost', {})
+    cost = cost_obj.get('total_cost_usd', 0) if isinstance(cost_obj, dict) else 0
+
     transcript = d.get('transcript_path', '')
 
     # Context from current_usage (accurate) with fallback
     ctx = d.get('context_window', {})
-    ctx_size = ctx.get('context_window_size', 200000)
-    current = ctx.get('current_usage')
+    ctx_size = ctx.get('context_window_size', 200000) if isinstance(ctx, dict) else 200000
+    current = ctx.get('current_usage') if isinstance(ctx, dict) else None
 
     if current and isinstance(current, dict):
         # Use current_usage: input + cache tokens
@@ -37,20 +49,23 @@ try:
     else:
         tokens = 0
 
-    print(f'MODEL_DISPLAY={shlex.quote(model)}')
-    print(f'CURRENT_DIR={shlex.quote(cwd)}')
-    print(f'COST={cost:.2f}')
-    print(f'TRANSCRIPT_PATH={shlex.quote(transcript)}')
-    print(f'CONTEXT_SIZE={ctx_size}')
-    print(f'TOKENS_USED={tokens}')
+    print(f'MODEL_DISPLAY={shlex.quote(str(model))}')
+    print(f'CURRENT_DIR={shlex.quote(str(cwd))}')
+    print(f'COST={float(cost):.2f}')
+    print(f'TRANSCRIPT_PATH={shlex.quote(str(transcript))}')
+    print(f'CONTEXT_SIZE={int(ctx_size)}')
+    print(f'TOKENS_USED={int(tokens)}')
 except Exception as e:
+    # Log error for debugging
+    with open('/tmp/statusline-debug.log', 'a') as f:
+        f.write(f'ERROR: {e}\n')
     print('MODEL_DISPLAY=\"?\"')
     print('CURRENT_DIR=\".\"')
     print('COST=0.00')
     print('TRANSCRIPT_PATH=\"\"')
     print('CONTEXT_SIZE=200000')
     print('TOKENS_USED=0')
-" 2>/dev/null)
+")
 
 # Get repo name and branch, or show directory name
 REPO_INFO=""
@@ -96,16 +111,17 @@ import json
 import os
 import glob
 import time
+import re
 
 transcript_path = '$TRANSCRIPT_PATH'
 project_dir = '$PROJECT_DIR'
 context_size = $CONTEXT_SIZE
 
 # Track background processes
-bg_shells = {}           # tool_id -> True (started)
+bg_shells = {}           # tool_id -> backgroundTaskId
 async_agent_ids = set()  # agent_ids that are running (async launched)
 completed_agent_ids = set()  # agent_ids that have been retrieved via TaskOutput
-completed_shell_tools = set()  # tool_ids for completed shells
+completed_shell_ids = set()  # backgroundTaskIds that have completed (from bash-notification)
 
 try:
     with open(transcript_path, 'r') as f:
@@ -117,6 +133,15 @@ try:
 
                 if isinstance(content, list):
                     for block in content:
+                        # Handle string content (user messages with bash-notification)
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text = block.get('text', '')
+                            # Parse <bash-notification> for completed shells
+                            for match in re.finditer(r'<bash-notification>.*?<shell-id>([^<]+)</shell-id>.*?<status>([^<]+)</status>.*?</bash-notification>', text, re.DOTALL):
+                                shell_id, status = match.groups()
+                                if status == 'completed':
+                                    completed_shell_ids.add(shell_id)
+
                         if not isinstance(block, dict):
                             continue
 
@@ -128,7 +153,7 @@ try:
 
                             # Background Bash
                             if name == 'Bash' and inp.get('run_in_background'):
-                                bg_shells[tool_id] = True
+                                bg_shells[tool_id] = None  # Will be filled by tool_result
 
                             # TaskOutput retrieves agent results - mark agent as completed
                             if name == 'TaskOutput':
@@ -136,29 +161,44 @@ try:
                                 if task_id:
                                     completed_agent_ids.add(task_id)
 
-                        # Track tool_result blocks for shell completions only
-                        # (Agents are tracked separately via async_agent_ids)
-                        if block.get('type') == 'tool_result':
-                            tool_id = block.get('tool_use_id', '')
-                            # Only mark shell tools as completed, not agent tools
-                            if tool_id in bg_shells:
-                                # Check if this is a completion or just launch confirmation
-                                entry_result = entry.get('toolUseResult', {})
-                                if not entry_result.get('isAsync'):
-                                    completed_shell_tools.add(tool_id)
+                # Check entry-level toolUseResult for backgroundTaskId
+                tool_result_obj = entry.get('toolUseResult', {})
+                bg_task_id = tool_result_obj.get('backgroundTaskId')
 
-                # Check for async agent launch
-                tool_result = entry.get('toolUseResult', {})
-                if tool_result.get('status') == 'async_launched':
-                    agent_id = tool_result.get('agentId')
-                    if agent_id:
+                # If this entry has a backgroundTaskId, find the corresponding tool_use_id
+                # from message.content[] blocks with type='tool_result'
+                if bg_task_id and isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get('type') == 'tool_result':
+                            tool_use_id = block.get('tool_use_id', '')
+                            if tool_use_id in bg_shells:
+                                bg_shells[tool_use_id] = bg_task_id
+                                break
+
+                # Check for agent launch - can be 'async_launched' or 'completed'
+                if tool_result_obj.get('agentId'):
+                    status = tool_result_obj.get('status', '')
+                    if status in ['async_launched', 'completed']:
+                        agent_id = tool_result_obj.get('agentId')
                         async_agent_ids.add(agent_id)
 
             except:
                 pass
 
-    # Calculate active background processes
-    active_shells = len([t for t in bg_shells if t not in completed_shell_tools])
+    # Debug: log what was found
+    import sys
+    sys.stderr.write(f'DEBUG PARSE: Found {len(async_agent_ids)} agents, {len(bg_shells)} shells\\n')
+    sys.stderr.write(f'DEBUG PARSE: async_agent_ids={async_agent_ids}\\n')
+    sys.stderr.write(f'DEBUG PARSE: completed_agent_ids={completed_agent_ids}\\n')
+    sys.stderr.write(f'DEBUG PARSE: bg_shells={bg_shells}\\n')
+    sys.stderr.write(f'DEBUG PARSE: completed_shell_ids={completed_shell_ids}\\n')
+
+    # Calculate active background shells
+    # A shell is active if its backgroundTaskId is NOT in completed_shell_ids
+    active_shells = 0
+    for tool_id, bg_task_id in bg_shells.items():
+        if bg_task_id and bg_task_id not in completed_shell_ids:
+            active_shells += 1
 
     # Filter agents - check if they're actually still running
     # An agent is considered complete if:
@@ -220,14 +260,20 @@ try:
         shell_word = 'shell' if active_shells == 1 else 'shells'
         parts.append(f'⏵ {active_shells} {shell_word}')
 
+    # Debug logging
+    import sys
+    sys.stderr.write(f'DEBUG: active_agent_ids={len(active_agent_ids)}, active_shells={active_shells}, parts={parts}\\n')
+
     if parts:
         print(' | '.join(parts))
     else:
         print('')
 
 except Exception as e:
+    import sys
+    sys.stderr.write(f'ERROR in background tracking: {e}\\n')
     print('')
-" 2>/dev/null)
+" 2>>/tmp/statusline-background-debug.log)
 fi
 
 # Format output: Main line
