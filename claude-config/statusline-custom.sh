@@ -163,12 +163,16 @@ try:
                                 bg_shells[tool_use_id] = bg_task_id
                                 break
 
-                # Check for agent launch - can be 'async_launched' or 'completed'
+                # Check for agent - track any agentId we see
+                # Statuses: in_progress, pending, running = active; completed, failed = done
                 if tool_result_obj.get('agentId'):
+                    agent_id = tool_result_obj.get('agentId')
                     status = tool_result_obj.get('status', '')
-                    if status in ['async_launched', 'completed']:
-                        agent_id = tool_result_obj.get('agentId')
+                    if status in ['in_progress', 'pending', 'running']:
                         async_agent_ids.add(agent_id)
+                    elif status in ['completed', 'failed']:
+                        # Agent finished - mark as completed
+                        completed_agent_ids.add(agent_id)
 
             except:
                 pass
