@@ -202,22 +202,24 @@ try:
                     active_shells += 1
             # If file doesn't exist, shell is either not started or already cleaned up
 
-    # Filter agents - check if they're actually still running
-    # An agent is considered complete if:
-    # 1. TaskOutput was called for it, OR
-    # 2. Its transcript file hasn't been modified in 60+ seconds (agents can pause while thinking)
+    # Find active agents by scanning for recently modified agent files
+    # This is more reliable than parsing transcript since agentId only appears on completion
+    import glob
     active_agent_ids = []
-    for aid in async_agent_ids:
-        if aid in completed_agent_ids:
-            continue  # Explicitly completed via TaskOutput
-        # Check transcript file modification time
-        agent_file = os.path.join(project_dir, f'agent-{aid}.jsonl')
-        if os.path.exists(agent_file):
-            mtime = os.path.getmtime(agent_file)
-            age = time.time() - mtime
-            if age < 60:  # 60s timeout - agents can pause while thinking/waiting for API
-                active_agent_ids.append(aid)
-        # If file doesn't exist or is stale, agent is done
+
+    # Scan for agent-*.jsonl files modified in last 60 seconds
+    agent_pattern = os.path.join(project_dir, 'agent-*.jsonl')
+    for agent_file in glob.glob(agent_pattern):
+        mtime = os.path.getmtime(agent_file)
+        age = time.time() - mtime
+        if age < 60:  # Active if modified in last 60s
+            # Extract agent ID from filename (agent-{id}.jsonl)
+            basename = os.path.basename(agent_file)
+            if basename.startswith('agent-') and basename.endswith('.jsonl'):
+                aid = basename[6:-6]  # Remove 'agent-' prefix and '.jsonl' suffix
+                # Skip if already retrieved via TaskOutput
+                if aid not in completed_agent_ids:
+                    active_agent_ids.append(aid)
 
     # Build output parts
     parts = []
