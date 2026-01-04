@@ -109,9 +109,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
     BACKGROUND_LINE=$(python3 -c "
 import json
 import os
-import glob
 import time
-import re
 
 transcript_path = '$TRANSCRIPT_PATH'
 project_dir = '$PROJECT_DIR'
@@ -121,7 +119,6 @@ context_size = $CONTEXT_SIZE
 bg_shells = {}           # tool_id -> backgroundTaskId
 async_agent_ids = set()  # agent_ids that are running (async launched)
 completed_agent_ids = set()  # agent_ids that have been retrieved via TaskOutput
-completed_shell_ids = set()  # backgroundTaskIds that have completed (from bash-notification)
 
 try:
     with open(transcript_path, 'r') as f:
@@ -133,15 +130,6 @@ try:
 
                 if isinstance(content, list):
                     for block in content:
-                        # Handle string content (user messages with bash-notification)
-                        if isinstance(block, dict) and block.get('type') == 'text':
-                            text = block.get('text', '')
-                            # Parse <bash-notification> for completed shells
-                            for match in re.finditer(r'<bash-notification>.*?<shell-id>([^<]+)</shell-id>.*?<status>([^<]+)</status>.*?</bash-notification>', text, re.DOTALL):
-                                shell_id, status = match.groups()
-                                if status == 'completed':
-                                    completed_shell_ids.add(shell_id)
-
                         if not isinstance(block, dict):
                             continue
 
@@ -185,20 +173,30 @@ try:
             except:
                 pass
 
-    # Debug: log what was found
-    import sys
-    sys.stderr.write(f'DEBUG PARSE: Found {len(async_agent_ids)} agents, {len(bg_shells)} shells\\n')
-    sys.stderr.write(f'DEBUG PARSE: async_agent_ids={async_agent_ids}\\n')
-    sys.stderr.write(f'DEBUG PARSE: completed_agent_ids={completed_agent_ids}\\n')
-    sys.stderr.write(f'DEBUG PARSE: bg_shells={bg_shells}\\n')
-    sys.stderr.write(f'DEBUG PARSE: completed_shell_ids={completed_shell_ids}\\n')
-
-    # Calculate active background shells
-    # A shell is active if its backgroundTaskId is NOT in completed_shell_ids
+    # Calculate active background shells by checking output file mtime
+    # A shell is active if its output file was modified within last 10 seconds
+    # Output files are at: /tmp/claude/{project-path}/tasks/{shell_id}.output
     active_shells = 0
+
+    # Build task output directory path from transcript path
+    # e.g., /home/user/.claude/projects/-home-user-code-project/xxx.jsonl
+    #    -> /tmp/claude/-home-user-code-project/tasks/
+    project_slug = os.path.basename(project_dir)  # -home-user-code-project
+    tasks_dir = f'/tmp/claude/{project_slug}/tasks'
+
     for tool_id, bg_task_id in bg_shells.items():
-        if bg_task_id and bg_task_id not in completed_shell_ids:
-            active_shells += 1
+        if bg_task_id:
+            # Check if TaskOutput was called for this shell
+            if bg_task_id in completed_agent_ids:
+                continue  # Explicitly retrieved
+            # Check output file mtime - only count if file exists and is recent
+            output_file = os.path.join(tasks_dir, f'{bg_task_id}.output')
+            if os.path.exists(output_file):
+                mtime = os.path.getmtime(output_file)
+                age = time.time() - mtime
+                if age < 10:  # Still being written to
+                    active_shells += 1
+            # If file doesn't exist, shell is either not started or already cleaned up
 
     # Filter agents - check if they're actually still running
     # An agent is considered complete if:
