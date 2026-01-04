@@ -201,7 +201,7 @@ try:
     # Filter agents - check if they're actually still running
     # An agent is considered complete if:
     # 1. TaskOutput was called for it, OR
-    # 2. Its transcript file hasn't been modified in 10+ seconds
+    # 2. Its transcript file hasn't been modified in 60+ seconds (agents can pause while thinking)
     active_agent_ids = []
     for aid in async_agent_ids:
         if aid in completed_agent_ids:
@@ -211,7 +211,7 @@ try:
         if os.path.exists(agent_file):
             mtime = os.path.getmtime(agent_file)
             age = time.time() - mtime
-            if age < 10:  # Still being written to
+            if age < 60:  # 60s timeout - agents can pause while thinking/waiting for API
                 active_agent_ids.append(aid)
         # If file doesn't exist or is stale, agent is done
 
