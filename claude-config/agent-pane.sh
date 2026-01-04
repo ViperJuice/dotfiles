@@ -92,8 +92,17 @@ except:
     last_mtime=0
     idle_count=0
     max_idle=10
+    total_runtime=0
+    max_runtime=600  # 10 minute maximum for agents
 
     while kill -0 \$TAIL_PID 2>/dev/null; do
+        ((total_runtime++))
+        if [[ \$total_runtime -ge \$max_runtime ]]; then
+            echo -e '\n\033[0;33m⏱ Timeout reached\033[0m'
+            kill \$TAIL_PID 2>/dev/null
+            exit 0
+        fi
+
         if [[ -f \"\$TRANSCRIPT\" ]]; then
             current_mtime=\$(stat -c%Y \"\$TRANSCRIPT\" 2>/dev/null || echo 0)
             if [[ \$current_mtime -gt \$last_mtime ]]; then
@@ -107,6 +116,11 @@ except:
                     exit 0
                 fi
             fi
+        else
+            # Transcript file was deleted - exit
+            echo -e '\n\033[0;31m✗ Transcript removed\033[0m'
+            kill \$TAIL_PID 2>/dev/null
+            exit 0
         fi
         sleep 1
     done

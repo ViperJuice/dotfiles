@@ -82,6 +82,18 @@ zellij run --stacked --stack-with "terminal_$PARENT_PANE_ID" --close-on-exit --n
 
     OUTPUT_FILE='$OUTPUT_FILE'
 
+    # Wait for output file to exist (max 30 seconds)
+    wait_count=0
+    while [[ ! -f \"\$OUTPUT_FILE\" ]] && [[ \$wait_count -lt 30 ]]; do
+        sleep 1
+        ((wait_count++))
+    done
+
+    if [[ ! -f \"\$OUTPUT_FILE\" ]]; then
+        echo -e '\033[0;31m✗ Output file not found\033[0m'
+        exit 1
+    fi
+
     # Use tail -f in background, monitor file mtime to detect completion
     tail -f \"\$OUTPUT_FILE\" 2>/dev/null &
     TAIL_PID=\$!
@@ -90,8 +102,17 @@ zellij run --stacked --stack-with "terminal_$PARENT_PANE_ID" --close-on-exit --n
     last_mtime=0
     idle_count=0
     max_idle=10
+    total_runtime=0
+    max_runtime=300  # 5 minute maximum
 
     while kill -0 \$TAIL_PID 2>/dev/null; do
+        ((total_runtime++))
+        if [[ \$total_runtime -ge \$max_runtime ]]; then
+            echo -e '\n\033[0;33m⏱ Timeout reached\033[0m'
+            kill \$TAIL_PID 2>/dev/null
+            exit 0
+        fi
+
         if [[ -f \"\$OUTPUT_FILE\" ]]; then
             current_mtime=\$(stat -c%Y \"\$OUTPUT_FILE\" 2>/dev/null || echo 0)
             if [[ \$current_mtime -gt \$last_mtime ]]; then
@@ -105,6 +126,11 @@ zellij run --stacked --stack-with "terminal_$PARENT_PANE_ID" --close-on-exit --n
                     exit 0
                 fi
             fi
+        else
+            # File was deleted - exit
+            echo -e '\n\033[0;31m✗ Output file removed\033[0m'
+            kill \$TAIL_PID 2>/dev/null
+            exit 0
         fi
         sleep 1
     done
