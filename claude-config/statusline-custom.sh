@@ -120,7 +120,32 @@ bg_shells = {}           # tool_id -> backgroundTaskId
 async_agent_ids = set()  # agent_ids that are running (async launched)
 completed_agent_ids = set()  # agent_ids that have been retrieved via TaskOutput
 
-try:
+    # Parse ALL transcripts to find completed agents (not just current transcript)
+    # since agent files span across all sessions
+    all_transcripts = glob.glob(os.path.join(project_dir, '*.jsonl'))
+    for t_path in all_transcripts:
+        # Skip agent files
+        if 'agent-' in os.path.basename(t_path):
+            continue
+
+        try:
+            with open(t_path, 'r') as tf:
+                for line in tf:
+                    try:
+                        entry = json.loads(line)
+                        tool_result_obj = entry.get('toolUseResult', {})
+
+                        # Check for completed agents
+                        if tool_result_obj.get('agentId'):
+                            status = tool_result_obj.get('status', '')
+                            if status in ['completed', 'failed']:
+                                completed_agent_ids.add(tool_result_obj.get('agentId'))
+                    except:
+                        pass
+        except:
+            pass
+
+    # Now parse CURRENT transcript for background shells and TaskOutput
     with open(transcript_path, 'r') as f:
         for line in f:
             try:
@@ -162,17 +187,6 @@ try:
                             if tool_use_id in bg_shells:
                                 bg_shells[tool_use_id] = bg_task_id
                                 break
-
-                # Check for agent - track any agentId we see
-                # Statuses: in_progress, pending, running = active; completed, failed = done
-                if tool_result_obj.get('agentId'):
-                    agent_id = tool_result_obj.get('agentId')
-                    status = tool_result_obj.get('status', '')
-                    if status in ['in_progress', 'pending', 'running']:
-                        async_agent_ids.add(agent_id)
-                    elif status in ['completed', 'failed']:
-                        # Agent finished - mark as completed
-                        completed_agent_ids.add(agent_id)
 
             except:
                 pass
