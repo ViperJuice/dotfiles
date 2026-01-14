@@ -203,23 +203,48 @@ try:
             # If file doesn't exist, shell is either not started or already cleaned up
 
     # Find active agents by scanning for recently modified agent files
-    # This is more reliable than parsing transcript since agentId only appears on completion
+    # Check each agent file to see if it has completed
     import glob
     active_agent_ids = []
 
-    # Scan for agent-*.jsonl files modified in last 60 seconds
+    # Scan for agent-*.jsonl files modified in last 5 minutes (safety timeout for stuck agents)
     agent_pattern = os.path.join(project_dir, 'agent-*.jsonl')
     for agent_file in glob.glob(agent_pattern):
         mtime = os.path.getmtime(agent_file)
         age = time.time() - mtime
-        if age < 60:  # Active if modified in last 60s
-            # Extract agent ID from filename (agent-{id}.jsonl)
-            basename = os.path.basename(agent_file)
-            if basename.startswith('agent-') and basename.endswith('.jsonl'):
-                aid = basename[6:-6]  # Remove 'agent-' prefix and '.jsonl' suffix
-                # Skip if already retrieved via TaskOutput
-                if aid not in completed_agent_ids:
-                    active_agent_ids.append(aid)
+
+        # Skip agents that haven't been modified in 5 minutes (stuck/abandoned)
+        if age >= 300:
+            continue
+
+        # Extract agent ID from filename
+        basename = os.path.basename(agent_file)
+        if not (basename.startswith('agent-') and basename.endswith('.jsonl')):
+            continue
+        aid = basename[6:-6]
+
+        # Skip if already retrieved via TaskOutput
+        if aid in completed_agent_ids:
+            continue
+
+        # Check if agent has completed by reading last message from agent file
+        try:
+            with open(agent_file, 'r') as af:
+                last_line = None
+                for line in af:
+                    last_line = line
+                if last_line:
+                    last_msg = json.loads(last_line)
+                    msg = last_msg.get('message', {})
+                    stop_reason = msg.get('stop_reason')
+                    # If stop_reason exists (end_turn, max_tokens, stop_sequence), agent completed
+                    if stop_reason and stop_reason != 'None':
+                        continue  # Agent completed, skip it
+        except:
+            pass  # If we can't read the file, assume it's still active
+
+        # Agent is still active
+        active_agent_ids.append(aid)
 
     # Build output parts
     parts = []
