@@ -187,6 +187,14 @@ verify_deps
 authenticate_claude
 echo ""
 
+# =============================================================================
+# Update Git Submodules (anthropic-skills marketplace)
+# =============================================================================
+echo "Updating git submodules..."
+git -C "$DOTFILES_DIR" submodule update --init --remote
+echo "  ✓ Submodules updated"
+echo ""
+
 # Helper: Add or replace a managed block in a file
 # Usage: add_managed_block <file> <block_name> <content>
 add_managed_block() {
@@ -226,9 +234,10 @@ ln -sf "$DOTFILES_DIR/claude-config/statusline-custom.sh" ~/.claude/statusline-c
 ln -sf "$DOTFILES_DIR/claude-config/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify-clear.sh" ~/.claude/notify-clear.sh
 ln -sf "$DOTFILES_DIR/claude-config/agent-pane.sh" ~/.claude/agent-pane.sh
+ln -sf "$DOTFILES_DIR/claude-config/bash-pane.sh" ~/.claude/bash-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
-chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh
 echo "Linked Claude config files"
 
 # WSL: Detect Windows username and symlink Screenshots folder
@@ -274,6 +283,16 @@ if [[ "$PLATFORM" == "wsl" ]]; then
     # WSL-specific skills
     ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
     echo "Installed WSL-specific skills (wsl-screenshots)"
+fi
+
+# Install anthropic-skills (symlink each skill to ~/.claude/skills/)
+if [ -d "$DOTFILES_DIR/anthropic-skills/skills" ]; then
+    echo "Installing Anthropic skills..."
+    for skill_dir in "$DOTFILES_DIR/anthropic-skills/skills/"*/; do
+        skill_name=$(basename "$skill_dir")
+        ln -sf "$skill_dir" ~/.claude/skills/"$skill_name"
+    done
+    echo "  ✓ Installed $(ls -d "$DOTFILES_DIR/anthropic-skills/skills/"*/ | wc -l) Anthropic skills"
 fi
 
 # Define shell config content
@@ -380,6 +399,9 @@ echo "  • Shell aliases → ~/.zshrc / ~/.bashrc"
 echo "  • Tab title → repo:branch format"
 if command -v zellij &>/dev/null; then
     echo "  • Zellij notifications → enabled"
+fi
+if [ -d "$DOTFILES_DIR/anthropic-skills" ]; then
+    echo "  • Anthropic skills marketplace → available"
 fi
 
 if [ ${#SKIPPED[@]} -gt 0 ]; then
