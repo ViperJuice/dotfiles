@@ -3,15 +3,6 @@
   "hooks": {
     "Notification": [
       {
-        "matcher": "idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/notify.sh"
-          }
-        ]
-      },
-      {
         "matcher": "permission_prompt",
         "hooks": [
           {

@@ -240,6 +240,11 @@ ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh
 echo "Linked Claude config files"
 
+# Zellij config
+mkdir -p ~/.config/zellij
+ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl
+echo "Linked Zellij config"
+
 # WSL: Detect Windows username and symlink Screenshots folder
 if [ -d "/mnt/c/Users" ]; then
     WIN_USER=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n')

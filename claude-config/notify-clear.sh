@@ -6,7 +6,14 @@
 [[ -z "$ZELLIJ" ]] && exit 0
 
 # Remove notification file
-rm -f "/tmp/zellij-notify-$ZELLIJ_PANE_ID" 2>/dev/null
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-notify"
+rm -f "$state_dir/zellij-notify-$ZELLIJ_PANE_ID" 2>/dev/null
+
+# Debug: log clears to trace unexpected resets
+{
+    printf '%s clear pane=%s zellij=%s cwd=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${ZELLIJ_PANE_ID:-}" "${ZELLIJ:-}" "$(pwd)"
+    echo '---'
+} >> /tmp/claude-notify-clear.log
 
 # Update pane title to current repo:branch (removes bell, updates branch)
 cwd=$(pwd)

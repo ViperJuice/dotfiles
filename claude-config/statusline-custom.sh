@@ -1,13 +1,5 @@
 #!/bin/bash
 
-# Auto-clear notification when pane is viewed
-# If this statusline is being rendered, the user can see the pane
-NOTIFY_FILE="/tmp/zellij-notify-$ZELLIJ_PANE_ID"
-if [[ -n "$ZELLIJ_PANE_ID" && -f "$NOTIFY_FILE" ]]; then
-    # Clear notification since user is looking at this pane
-    ~/.claude/notify-clear.sh
-fi
-
 # Read JSON input from stdin
 input=$(cat)
 
