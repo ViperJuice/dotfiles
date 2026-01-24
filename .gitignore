@@ -8,6 +8,10 @@
 *.key
 *.pem
 
+# MCP config (contains API keys)
+.mcp.json
+!.mcp.json.example
+
 # Claude Code state (not config)
 .credentials.json
 

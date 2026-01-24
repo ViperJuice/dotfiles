@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "gateway": {
+      "command": "uvx",
+      "args": ["pmcp", "-c", "/path/to/.pmcp.json"],
+      "env": {
+        "GROQ_API_KEY": "gsk_your_groq_api_key_here"
+      }
+    }
+  }
+}
