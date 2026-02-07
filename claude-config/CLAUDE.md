@@ -66,3 +66,19 @@ When implementing browser-based features (HTML/CSS/JavaScript):
    - Note what was tested in commit messages
    - Save screenshots of verified states
    - Report any issues found during testing
+
+## MCP Gateway (PMCP)
+
+An MCP gateway is available via tools prefixed with `mcp__gateway__`. Before reaching for Bash workarounds or telling the user something isn't possible, check whether the gateway has a tool for it.
+
+**When to use**: Library documentation lookup, headless browser automation (Playwright), or any capability you don't have natively.
+
+**Workflow**: `gateway_catalog_search` → `gateway_describe` → `gateway_invoke`
+
+1. **Search**: `gateway_catalog_search(query="browser screenshot")` — returns compact capability cards
+2. **Describe**: `gateway_describe(tool_id="playwright::browser_take_screenshot")` — get full schema
+3. **Invoke**: `gateway_invoke(tool_id="playwright::browser_take_screenshot", arguments={...})` — execute
+
+**Don't know the tool name?** Use `gateway_request_capability(query="I need to look up React docs")` — it matches natural language to available tools and can provision new servers on-demand.
+
+**Key tools available now**: Playwright (headless browser, 22 tools), Context7 (library docs lookup). More can be provisioned via `gateway_provision`.
