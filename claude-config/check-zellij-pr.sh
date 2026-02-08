@@ -1,8 +1,7 @@
 #!/bin/bash
 # Check if Zellij PR #4570 has been merged
-# Run via cron: 0 9 * * * /home/jenner/code/dotfiles/claude/check-zellij-pr.sh
+# Run via cron: 0 9 * * * $HOME/code/dotfiles/claude-config/check-zellij-pr.sh
 
-PR_URL="https://github.com/zellij-org/zellij/pull/4570"
 MARKER_FILE="/tmp/zellij-pr-4570-notified"
 
 # Don't notify more than once

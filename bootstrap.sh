@@ -100,15 +100,54 @@ install_deps() {
         echo "  ✓ claude"
     fi
 
-    # Zellij (optional but recommended)
-    if ! command -v zellij &>/dev/null; then
-        echo "  Installing Zellij..."
+    # Zellij (custom fork with pane targeting features)
+    # The custom fork adds --pane-id, --stack-with, focus-pane-by-id, etc.
+    ZELLIJ_SRC_DIR="${ZELLIJ_SRC_DIR:-$HOME/code/zellij}"
+    ZELLIJ_BRANCH="feat/rename-pane-by-id"
+
+    if [[ -d "$ZELLIJ_SRC_DIR/.git" ]]; then
+        echo "  Building custom Zellij from $ZELLIJ_SRC_DIR..."
+        # Ensure Rust toolchain is available
+        if ! command -v cargo &>/dev/null; then
+            if command -v rustup &>/dev/null; then
+                echo "    Updating Rust toolchain..."
+                rustup update stable
+            else
+                echo "    Installing Rust via rustup..."
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+                source "$HOME/.cargo/env"
+            fi
+        fi
+
+        if command -v cargo &>/dev/null; then
+            # Checkout the feature branch and build
+            (
+                cd "$ZELLIJ_SRC_DIR" &&
+                git checkout "$ZELLIJ_BRANCH" 2>/dev/null &&
+                cargo xtask build 2>&1 | tail -1
+            )
+            if [[ -f "$ZELLIJ_SRC_DIR/target/release/zellij" ]]; then
+                mkdir -p "$HOME/.local/bin"
+                cp "$ZELLIJ_SRC_DIR/target/release/zellij" "$HOME/.local/bin/zellij"
+                INSTALLED+=("zellij (custom fork)")
+                echo "  ✓ Custom Zellij installed to ~/.local/bin/zellij"
+            else
+                echo "  ⚠ Custom Zellij build failed - check $ZELLIJ_SRC_DIR"
+                SKIPPED+=("zellij (custom build failed)")
+            fi
+        else
+            echo "  ⚠ Cannot build custom Zellij: Rust toolchain not available"
+            SKIPPED+=("zellij (no Rust)")
+        fi
+    elif ! command -v zellij &>/dev/null; then
+        echo "  Installing stock Zellij (custom fork not found at $ZELLIJ_SRC_DIR)..."
+        echo "  ⚠ Stock Zellij lacks --pane-id and --stack-with features"
         if [[ "$PLATFORM" == "mac" ]] && command -v brew &>/dev/null; then
             brew install zellij
-            INSTALLED+=("zellij")
+            INSTALLED+=("zellij (stock)")
         elif command -v cargo &>/dev/null; then
             cargo install zellij
-            INSTALLED+=("zellij")
+            INSTALLED+=("zellij (stock)")
         else
             echo "  ℹ Zellij: Install manually from https://zellij.dev/"
             SKIPPED+=("zellij (optional)")
@@ -208,7 +247,8 @@ add_managed_block() {
     [ -f "$file" ] || return 0
 
     # Remove existing block if present (using temp file for compatibility)
-    local tmp=$(mktemp)
+    local tmp
+    tmp=$(mktemp)
     awk -v start="$start_marker" -v end="$end_marker" '
         $0 == start { skip=1; next }
         $0 == end { skip=0; next }
@@ -235,10 +275,34 @@ ln -sf "$DOTFILES_DIR/claude-config/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify-clear.sh" ~/.claude/notify-clear.sh
 ln -sf "$DOTFILES_DIR/claude-config/agent-pane.sh" ~/.claude/agent-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/bash-pane.sh" ~/.claude/bash-pane.sh
+ln -sf "$DOTFILES_DIR/claude-config/stacked-pane.sh" ~/.claude/stacked-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
-chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh
+# Symlink commands directory (remove existing dir/link first to avoid nesting)
+rm -rf ~/.claude/commands 2>/dev/null
+ln -sf "$DOTFILES_DIR/claude-config/commands" ~/.claude/commands
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh ~/.claude/stacked-pane.sh
 echo "Linked Claude config files"
+
+# OpenCode config
+mkdir -p ~/.config/opencode/commands
+if [ -d "$DOTFILES_DIR/opencode-config/commands" ]; then
+    for cmd in "$DOTFILES_DIR/opencode-config/commands/"*.md; do
+        [ -f "$cmd" ] && ln -sf "$cmd" ~/.config/opencode/commands/
+    done
+    echo "Linked OpenCode commands"
+fi
+
+# Install PMCP configuration with expanded paths
+if [ -f "$DOTFILES_DIR/.pmcp.json" ]; then
+    # Expand $HOME in the config and write to ~/.pmcp.json
+    # Use double quotes and eval to properly expand $HOME
+    while IFS= read -r line; do
+        echo "$line" | sed "s|\\\$HOME|$HOME|g"
+    done < "$DOTFILES_DIR/.pmcp.json" > ~/.pmcp.json
+    echo "Installed PMCP configuration to ~/.pmcp.json"
+    CONFIGURED+=("PMCP gateway config")
+fi
 
 # Zellij config
 mkdir -p ~/.config/zellij
@@ -272,8 +336,8 @@ read -r -d '' PATH_CONFIG << 'EOF' || true
 # Rust/Cargo environment
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
-# Add Claude local bin to PATH
-export PATH="$HOME/.claude/local:$PATH"
+# Add local bin and Claude local bin to PATH
+export PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH"
 
 # Initialize nvm (Node Version Manager)
 export NVM_DIR="$HOME/.nvm"

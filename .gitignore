@@ -12,6 +12,10 @@
 .mcp.json
 !.mcp.json.example
 
+# PMCP gateway runtime files
+.pmcp/logs/
+.mcp-gateway/gateway.lock
+
 # Claude Code state (not config)
 .credentials.json
 

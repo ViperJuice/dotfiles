@@ -5,7 +5,7 @@
 # Defaults
 CODE_DIR="${CODE_DIR:-$HOME/code}"
 OBSIDIAN_DIR="${OBSIDIAN_DIR:-$HOME/code/obsidian-dev-docs}"
-EXCLUDE_REPOS="obsidian-dev-docs"
+EXCLUDE_REPOS_ARRAY=(obsidian-dev-docs)
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -56,10 +56,15 @@ for repo_path in "$CODE_DIR"/*/; do
     repo_path="${repo_path%/}"
     repo_name=$(basename "$repo_path")
 
-    # Skip excluded repos
-    if [[ "$EXCLUDE_REPOS" == *"$repo_name"* ]]; then
-        continue
-    fi
+    # Skip excluded repos (exact match, not substring)
+    skip_repo=false
+    for exclude in "${EXCLUDE_REPOS_ARRAY[@]}"; do
+        if [[ "$repo_name" == "$exclude" ]]; then
+            skip_repo=true
+            break
+        fi
+    done
+    $skip_repo && continue
 
     # Documentation directories to look for
     DOC_DIRS=("docs" "ai-docs" "specs" "plans" "architecture" ".claude" ".cursor" ".gemini")

@@ -12,33 +12,25 @@ PARENT_PANE_ID="$ZELLIJ_PANE_ID"
 # Read hook input from stdin
 input=$(cat)
 
-# Extract agent ID and project path from hook input
-eval $(echo "$input" | python3 -c "
-import sys, json, re, shlex
+# Extract agent ID and project path from hook input (stdin piping, no eval)
+IFS=$'\t' read -r AGENT_ID PROJECT_DIR <<< "$(echo "$input" | python3 -c "
+import sys, json, re
 
 try:
     d = json.load(sys.stdin)
 
-    # Get agent ID from tool_response (PostToolUse provides this)
     tool_response = d.get('tool_response', {})
     agent_id = ''
-
-    # Check for agentId in tool_response
     if isinstance(tool_response, dict):
         agent_id = tool_response.get('agentId', '')
 
-    # Get cwd for project path
     cwd = d.get('cwd', '.')
-
-    # Convert to Claude project format: /home/jenner/code/foo -> -home-jenner-code-foo
     project_dir = '-' + re.sub(r'/', '-', cwd.lstrip('/'))
 
-    print(f'AGENT_ID={shlex.quote(agent_id)}')
-    print(f'PROJECT_DIR={shlex.quote(project_dir)}')
-except Exception as e:
-    print('AGENT_ID=\"\"')
-    print('PROJECT_DIR=\"\"')
-" 2>/dev/null)
+    print(agent_id, project_dir, sep='\t')
+except:
+    print('\t')
+" 2>/dev/null)"
 
 # Only proceed if we have an agent ID
 [[ -z "$AGENT_ID" ]] && exit 0
@@ -128,7 +120,13 @@ except:
 
 # Focus back to the parent pane so the agent pane goes behind in the stack
 # BUT ONLY if user hasn't switched to another pane (don't steal focus!)
-DEBUG_LOG="/tmp/zellij-agent-pane-debug.log"
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "$CLAUDE_DOTFILES_DEBUG" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] $*" >> "$LOG_DIR/pane.log"
+    fi
+}
 
 # Wait for pane creation to complete
 sleep 0.3
@@ -139,19 +137,18 @@ FOCUSED_AFTER=$(zellij action dump-layout 2>/dev/null | grep -o 'focused: true' 
 # Only restore focus if Zellij changed it (don't steal focus from user's active work)
 if [[ -n "$FOCUSED_BEFORE" ]] && [[ "$FOCUSED_AFTER" != "$FOCUSED_BEFORE" ]]; then
     # Zellij changed focus - restore to where user was
-    if zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>>"$DEBUG_LOG"; then
-        echo "[$(date)] Restored focus to $FOCUSED_BEFORE (was $FOCUSED_AFTER)" >> "$DEBUG_LOG"
+    if zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>/dev/null; then
+        debug_log "Restored focus to $FOCUSED_BEFORE (was $FOCUSED_AFTER)"
     else
-        echo "[$(date)] WARN: focus-pane-by-id failed, retrying" >> "$DEBUG_LOG"
+        debug_log "WARN: focus-pane-by-id failed, retrying"
         sleep 0.2
-        if ! zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>>"$DEBUG_LOG"; then
-            echo "[$(date)] ERROR: Could not restore focus to $FOCUSED_BEFORE" >> "$DEBUG_LOG"
-            zellij action focus-previous-pane 2>>"$DEBUG_LOG"
+        if ! zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>/dev/null; then
+            debug_log "ERROR: Could not restore focus to $FOCUSED_BEFORE"
+            zellij action focus-previous-pane 2>/dev/null
         fi
     fi
 else
-    # Focus unchanged - don't touch it
-    echo "[$(date)] Focus unchanged at $FOCUSED_AFTER - no action needed" >> "$DEBUG_LOG"
+    debug_log "Focus unchanged at $FOCUSED_AFTER - no action needed"
 fi
 
 # Exit immediately so hook doesn't block

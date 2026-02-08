@@ -1,5 +1,4 @@
 {
-  "model": "sonnet",
   "hooks": {
     "Notification": [
       {
@@ -38,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/agent-pane.sh"
+            "command": "~/.claude/stacked-pane.sh --type agent"
           }
         ]
       },
@@ -47,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/bash-pane.sh"
+            "command": "~/.claude/stacked-pane.sh --type shell"
           }
         ]
       }
@@ -60,6 +59,11 @@
   "enabledPlugins": {
     "rust-analyzer-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true
+    "pyright-lsp@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "context7@claude-plugins-official": false
   }
 }

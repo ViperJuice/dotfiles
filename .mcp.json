@@ -2,7 +2,7 @@
   "mcpServers": {
     "gateway": {
       "command": "uvx",
-      "args": ["pmcp", "-c", "/home/jenner/.pmcp.json"]
+      "args": ["pmcp", "-c", "~/.pmcp.json"]
     }
   }
 }

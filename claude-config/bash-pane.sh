@@ -12,48 +12,36 @@ PARENT_PANE_ID="$ZELLIJ_PANE_ID"
 # Read hook input from stdin
 input=$(cat)
 
-# Extract task info from hook input
-eval $(echo "$input" | python3 -c "
-import sys, json, re, shlex
+# Extract task info from hook input (stdin piping, no eval)
+IFS=$'\t' read -r IS_BACKGROUND TASK_ID PROJECT_DIR CWD <<< "$(echo "$input" | python3 -c "
+import sys, json, re
 
 try:
     d = json.load(sys.stdin)
 
-    # Check if this is a background shell
     tool_input = d.get('tool_input', {})
     is_background = tool_input.get('run_in_background', False)
 
     if not is_background:
-        print('IS_BACKGROUND=false')
+        print('false\t\t\t')
         sys.exit(0)
 
-    print('IS_BACKGROUND=true')
-
-    # Get task ID from tool_response.backgroundTaskId
     tool_response = d.get('tool_response', {})
     task_id = ''
-
     if isinstance(tool_response, dict):
-        # Primary: backgroundTaskId (actual field name from Claude)
         task_id = tool_response.get('backgroundTaskId', '')
-        # Fallbacks
         if not task_id:
             task_id = tool_response.get('task_id', '')
         if not task_id:
             task_id = tool_response.get('taskId', '')
 
-    # Get cwd for building output path
     cwd = d.get('cwd', '.')
-
-    # Convert to Claude project format: /home/jenner/code/foo -> -home-jenner-code-foo
     project_dir = '-' + re.sub(r'/', '-', cwd.lstrip('/'))
 
-    print(f'TASK_ID={shlex.quote(task_id)}')
-    print(f'PROJECT_DIR={shlex.quote(project_dir)}')
-    print(f'CWD={shlex.quote(cwd)}')
-except Exception as e:
-    print('IS_BACKGROUND=false')
-" 2>/dev/null)
+    print('true', task_id, project_dir, cwd, sep='\t')
+except:
+    print('false\t\t\t')
+" 2>/dev/null)"
 
 # Only proceed if this is a background shell with a task ID
 [[ "$IS_BACKGROUND" != "true" ]] && exit 0
@@ -138,7 +126,13 @@ zellij run --stacked --stack-with "terminal_$PARENT_PANE_ID" --close-on-exit --n
 
 # Focus back to the parent pane so the shell pane goes behind in the stack
 # BUT ONLY if user hasn't switched to another pane (don't steal focus!)
-DEBUG_LOG="/tmp/zellij-bash-pane-debug.log"
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "$CLAUDE_DOTFILES_DEBUG" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] $*" >> "$LOG_DIR/pane.log"
+    fi
+}
 
 # Wait for pane creation to complete
 sleep 0.3
@@ -149,19 +143,18 @@ FOCUSED_AFTER=$(zellij action dump-layout 2>/dev/null | grep -o 'focused: true' 
 # Only restore focus if Zellij changed it (don't steal focus from user's active work)
 if [[ -n "$FOCUSED_BEFORE" ]] && [[ "$FOCUSED_AFTER" != "$FOCUSED_BEFORE" ]]; then
     # Zellij changed focus - restore to where user was
-    if zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>>"$DEBUG_LOG"; then
-        echo "[$(date)] Restored focus to $FOCUSED_BEFORE (was $FOCUSED_AFTER)" >> "$DEBUG_LOG"
+    if zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>/dev/null; then
+        debug_log "Restored focus to $FOCUSED_BEFORE (was $FOCUSED_AFTER)"
     else
-        echo "[$(date)] WARN: focus-pane-by-id failed, retrying" >> "$DEBUG_LOG"
+        debug_log "WARN: focus-pane-by-id failed, retrying"
         sleep 0.2
-        if ! zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>>"$DEBUG_LOG"; then
-            echo "[$(date)] ERROR: Could not restore focus to $FOCUSED_BEFORE" >> "$DEBUG_LOG"
-            zellij action focus-previous-pane 2>>"$DEBUG_LOG"
+        if ! zellij action focus-pane-by-id "$FOCUSED_BEFORE" 2>/dev/null; then
+            debug_log "ERROR: Could not restore focus to $FOCUSED_BEFORE"
+            zellij action focus-previous-pane 2>/dev/null
         fi
     fi
 else
-    # Focus unchanged - don't touch it
-    echo "[$(date)] Focus unchanged at $FOCUSED_AFTER - no action needed" >> "$DEBUG_LOG"
+    debug_log "Focus unchanged at $FOCUSED_AFTER - no action needed"
 fi
 
 # Exit immediately so hook doesn't block

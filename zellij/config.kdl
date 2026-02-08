@@ -1,1 +1,10 @@
 scrollback_lines 50000
+auto_layout false
+
+keybinds {
+    // Cycle through stacked panes (useful for agent transcripts)
+    normal {
+        bind "Alt n" { FocusNextPane; }
+        bind "Alt p" { FocusPreviousPane; }
+    }
+}

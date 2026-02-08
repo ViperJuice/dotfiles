@@ -1,19 +1,40 @@
 #!/bin/bash
 # Clear Claude Code notification for this pane
-# Called by statusline-custom.sh when pane is viewed
-# Also updates pane title to current repo:branch
+# Called by UserPromptSubmit hook when user submits a prompt
+# Restores original pane/tab titles
 
 [[ -z "$ZELLIJ" ]] && exit 0
 
-# Remove notification file
-state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-notify"
-rm -f "$state_dir/zellij-notify-$ZELLIJ_PANE_ID" 2>/dev/null
+# Unified log directory
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "$CLAUDE_DOTFILES_DEBUG" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date '+%H:%M:%S')] [notify-clear] $*" >> "$LOG_DIR/notify.log"
+    fi
+}
 
-# Debug: log clears to trace unexpected resets
-{
-    printf '%s clear pane=%s zellij=%s cwd=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${ZELLIJ_PANE_ID:-}" "${ZELLIJ:-}" "$(pwd)"
-    echo '---'
-} >> /tmp/claude-notify-clear.log
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-notify"
+notify_file="$state_dir/zellij-notify-${ZELLIJ_SESSION_NAME:-default}-$ZELLIJ_PANE_ID"
+
+debug_log "pane=$ZELLIJ_PANE_ID clearing=$notify_file"
+
+# Restore original tab name from saved state (instead of undo-rename-tab)
+if [[ -f "$notify_file.tab" ]]; then
+    original_tab=$(cat "$notify_file.tab")
+    if [[ -n "$original_tab" ]]; then
+        zellij action rename-tab "$original_tab" 2>/dev/null
+    else
+        zellij action undo-rename-tab 2>/dev/null
+    fi
+    rm -f "$notify_file.tab" 2>/dev/null
+else
+    # Fallback: undo-rename-tab if no saved state
+    zellij action undo-rename-tab 2>/dev/null
+fi
+
+# Remove notification files
+rm -f "$notify_file" 2>/dev/null
 
 # Update pane title to current repo:branch (removes bell, updates branch)
 cwd=$(pwd)
@@ -28,10 +49,6 @@ else
     title="${cwd##*/}"
 fi
 
-# Rename pane to current repo:branch
 zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null
-
-# Clear tab rename (remove bell)
-zellij action undo-rename-tab 2>/dev/null
 
 exit 0
