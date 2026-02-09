@@ -6,8 +6,8 @@ description: Generate a detailed implementation plan with explicit file/method/c
 
 ## Project Context
 
-* Git status: !`git status --porcelain | head -20`
-* Recent commits: !`git log --oneline -5 2>/dev/null`
+* Git status: !`git status --porcelain 2>/dev/null | head -20 || echo "(not a git repo)"`
+* Recent commits: !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 * Project root: !`git rev-parse --show-toplevel 2>/dev/null || pwd`
 
 ## Task

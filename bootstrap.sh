@@ -345,6 +345,38 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 EOF
 
+# Define 1Password shell integration content
+read -r -d '' OP_CONFIG << 'EOF' || true
+# 1Password SSH Agent
+if [ -S "$HOME/.1password/agent.sock" ]; then
+    export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
+fi
+
+# 1Password CLI shell integration (op plugin)
+if command -v op &>/dev/null; then
+    eval "$(op signin --account my 2>/dev/null)" || true
+    # Helper: load secrets from 1Password into env
+    op-env() {
+        local envfile="${1:-$DOTFILES_DIR/1password/env.op}"
+        if [ -f "$envfile" ]; then
+            eval "$(op run --env-file="$envfile" -- env | grep -E '^(ANTHROPIC|CEREBRAS|GROQ|BRIGHTDATA|OLLAMA)_')"
+            echo "✓ Loaded secrets from 1Password"
+        else
+            echo "No env.op file found at $envfile"
+        fi
+    }
+fi
+EOF
+
+# =============================================================================
+# 1Password Integration
+# =============================================================================
+
+if [ -f "$DOTFILES_DIR/1password/setup.sh" ]; then
+    source "$DOTFILES_DIR/1password/setup.sh"
+    CONFIGURED+=("1Password SSH agent + git signing")
+fi
+
 # Skills installation (platform-specific)
 mkdir -p ~/.claude/skills
 
@@ -421,6 +453,11 @@ done
 
 [ -f ~/.zshrc ] && add_managed_block ~/.zshrc "TABTITLE" "$ZSH_TABTITLE"
 [ -f ~/.bashrc ] && add_managed_block ~/.bashrc "TABTITLE" "$BASH_TABTITLE"
+
+# 1Password shell integration
+for rc in ~/.bashrc ~/.zshrc; do
+    [ -f "$rc" ] && add_managed_block "$rc" "1PASSWORD" "$OP_CONFIG"
+done
 
 # =============================================================================
 # Obsidian Dev Docs Sync
