@@ -156,6 +156,29 @@ install_deps() {
         echo "  ✓ zellij"
     fi
 
+    # kitty terminal (OSC 52 clipboard support for SSH + zellij)
+    if [[ "$PLATFORM" != "mac" ]]; then
+        if ! command -v kitty &>/dev/null; then
+            if command -v apt &>/dev/null; then
+                echo "  Installing kitty terminal..."
+                sudo apt install -y kitty && INSTALLED+=("kitty") || SKIPPED+=("kitty (optional)")
+            fi
+        else
+            echo "  ✓ kitty"
+        fi
+
+        # Set kitty as default terminal emulator
+        if command -v kitty &>/dev/null && command -v update-alternatives &>/dev/null; then
+            KITTY_PATH=$(which kitty)
+            if ! update-alternatives --query x-terminal-emulator 2>/dev/null | grep -q "Value: $KITTY_PATH"; then
+                echo "  Setting kitty as default terminal..."
+                sudo update-alternatives --set x-terminal-emulator "$KITTY_PATH" 2>/dev/null && CONFIGURED+=("kitty as default terminal") || true
+            else
+                echo "  ✓ kitty is default terminal"
+            fi
+        fi
+    fi
+
     # pulseaudio-utils (for audio on Linux/WSL)
     if [[ "$PLATFORM" != "mac" ]]; then
         if ! command -v paplay &>/dev/null; then

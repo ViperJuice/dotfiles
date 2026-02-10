@@ -1,7 +1,8 @@
 scrollback_lines 50000
 auto_layout false
 
-copy_command "xclip -selection clipboard"
+// Use OSC 52 to copy to local clipboard over SSH
+copy_clipboard "system"
 copy_on_select true
 
 keybinds {
