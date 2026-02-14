@@ -308,6 +308,7 @@ ln -sf "$DOTFILES_DIR/claude-config/bash-pane.sh" ~/.claude/bash-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/stacked-pane.sh" ~/.claude/stacked-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
+ln -sf "$DOTFILES_DIR/claude-config/gateway-guidance.yaml" ~/.claude/gateway-guidance.yaml
 # Symlink commands directory (remove existing dir/link first to avoid nesting)
 rm -rf ~/.claude/commands 2>/dev/null
 ln -sf "$DOTFILES_DIR/claude-config/commands" ~/.claude/commands

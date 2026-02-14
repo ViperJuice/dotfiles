@@ -60,4 +60,30 @@ To add a new skill:
 
 ## MCP Gateway
 
-Agents have access to `mcp__gateway__*` tools for capabilities beyond the built-in toolset. Use `gateway_catalog_search` to discover available tools, then `gateway_describe` and `gateway_invoke` to use them. Use `gateway_request_capability` for natural language capability matching.
+Agents have access to `mcp__gateway__*` tools for capabilities beyond the built-in toolset.
+
+**Available now**:
+- **Context7** — library docs lookup (resolve library ID, then fetch docs by topic)
+- **Playwright** — browser automation (also available directly via `mcp__plugin_playwright_playwright__*`)
+- **20+ provisionable servers** — GitHub, Slack, Notion, etc. via `gateway_provision`
+
+**Workflow**: `gateway_catalog_search` -> `gateway_describe` -> `gateway_invoke`
+
+**Natural language**: `gateway_request_capability(query="...")` to find or provision tools.
+
+**Debugging**: `gateway_list_pending` to check stuck requests, `gateway_cancel` to abort.
+
+## Efficiency Skills (Auto-Triggered)
+
+These skills auto-trigger based on context but knowing they exist helps you invoke them proactively:
+
+- **Bash failures**: `/diagnose-bash-error` — decision tree for exit codes. STOP and diagnose before retrying.
+- **Build commands**: `/validate-before-bash` — preflight checks before tsc, pytest, flutter build, cargo build
+- **Search patterns**: `/smart-search` — ripgrep escaping rules, tool selection (Grep vs Glob vs Explore)
+- **Spawning subagents**: `/task-contextualizer` — include file paths and architecture context in Task prompts
+- **File editing**: `/safe-edit` — always Read before Edit; subagents must read independently
+- **File reading**: `/file-read-cache` — don't re-read files you already have in context
+- **Multi-file edits**: `/batch-verify` — complete all related edits, then verify once
+- **Browser testing**: `/smart-screenshot` — use snapshot for actions, screenshot only for visual checks
+- **Page load failures**: `/page-load-monitor` — diagnose after 2 failures, don't just retry
+- **New project**: `/detect-environment` — one-pass tool detection

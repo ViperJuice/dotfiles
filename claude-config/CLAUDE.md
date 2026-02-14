@@ -38,14 +38,32 @@ browser_console_messages()     → read console output
 
 An MCP gateway is available via tools prefixed with `mcp__gateway__`. Before reaching for Bash workarounds or telling the user something isn't possible, check whether the gateway has a tool for it.
 
-**When to use**: Library documentation lookup, headless browser automation (Playwright), or any capability you don't have natively.
+**Plugin vs Gateway**: Playwright is available directly as `mcp__plugin_playwright_playwright__*` (preferred for browser automation). The gateway provides additional capabilities like Context7 docs lookup and on-demand server provisioning.
 
-**Workflow**: `gateway_catalog_search` → `gateway_describe` → `gateway_invoke`
+**Discovery workflow**: `gateway_catalog_search` -> `gateway_describe` -> `gateway_invoke`
 
-1. **Search**: `gateway_catalog_search(query="browser screenshot")` — returns compact capability cards
-2. **Describe**: `gateway_describe(tool_id="playwright::browser_take_screenshot")` — get full schema
-3. **Invoke**: `gateway_invoke(tool_id="playwright::browser_take_screenshot", arguments={...})` — execute
+**Library docs (Context7)**:
+1. `gateway_invoke(tool_id="context7::resolve-library-id", arguments={"libraryName": "react"})`
+2. `gateway_invoke(tool_id="context7::get-library-docs", arguments={"context7CompatibleLibraryID": "/facebook/react", "topic": "hooks"})`
 
-**Don't know the tool name?** Use `gateway_request_capability(query="I need to look up React docs")` — it matches natural language to available tools and can provision new servers on-demand.
+**Natural language discovery**: `gateway_request_capability(query="I need to search Slack messages")` — matches to installed tools or provisions new servers.
 
-**Key tools available now**: Playwright (headless browser, 22 tools), Context7 (library docs lookup). More can be provisioned via `gateway_provision`.
+**Operational tools** (for debugging hangs or checking status):
+- `gateway_health` — server status and tool counts
+- `gateway_list_pending` — in-flight requests with elapsed time
+- `gateway_cancel(request_id="server::id")` — cancel stuck request
+- `gateway_provision(server_name="...")` — install and start a new MCP server
+
+## Efficiency Skills
+
+The following skills are installed to prevent common anti-patterns:
+- `/file-read-cache` — avoid re-reading files you already have in context
+- `/safe-edit` — always Read before Edit; check for external modifications
+- `/batch-verify` — batch verification after multi-file edits instead of checking each one
+- `/diagnose-bash-error` — diagnose bash failures before retrying
+- `/validate-before-bash` — preflight checks before running build tools
+- `/smart-search` — plan searches and avoid grep/glob thrashing
+- `/task-contextualizer` — include file paths and architecture context in subagent prompts
+- `/detect-environment` — one-pass tool detection at session start
+- `/smart-screenshot` — use snapshot for actions, screenshot only for visual checks
+- `/page-load-monitor` — diagnose page load failures instead of blind retries

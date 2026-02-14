@@ -1,0 +1,11 @@
+guidance:
+  level: "minimal"
+  custom_instructions: |
+    Workflow: catalog_search -> describe -> invoke.
+    For docs lookup, use Context7 (resolve library ID first, then get docs).
+    Need a capability not listed? Use gateway_request_capability or gateway_provision.
+  layers:
+    mcp_instructions: true
+    code_hints: true
+    code_snippets: false
+    methodology_resource: false
