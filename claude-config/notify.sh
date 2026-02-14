@@ -79,10 +79,16 @@ if [[ "$already_notified" -eq 0 && "$permission_mode" != "bypassPermissions" ]];
         powershell.exe -NoProfile -Command '[console]::beep(800,200)' &>/dev/null &
     elif [[ "$(uname)" == "Darwin" ]] && command -v afplay &>/dev/null; then
         afplay /System/Library/Sounds/Ping.aiff &>/dev/null &
-    elif command -v paplay &>/dev/null; then
+    elif command -v pw-play &>/dev/null || command -v paplay &>/dev/null || command -v aplay &>/dev/null; then
         for snd in /usr/share/sounds/freedesktop/stereo/bell.oga /usr/share/sounds/freedesktop/stereo/complete.oga; do
             if [ -f "$snd" ]; then
-                paplay "$snd" &>/dev/null &
+                if command -v pw-play &>/dev/null; then
+                    pw-play "$snd" &>/dev/null &
+                elif command -v paplay &>/dev/null; then
+                    paplay "$snd" &>/dev/null &
+                elif command -v aplay &>/dev/null; then
+                    aplay "$snd" &>/dev/null &
+                fi
                 break
             fi
         done

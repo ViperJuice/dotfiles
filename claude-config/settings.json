@@ -65,5 +65,6 @@
     "security-guidance@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "context7@claude-plugins-official": false
-  }
+  },
+  "skipDangerousModePermissionPrompt": true
 }

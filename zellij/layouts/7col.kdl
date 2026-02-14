@@ -1,0 +1,11 @@
+layout {
+    pane split_direction="vertical" {
+        pane size="14.28%"
+        pane size="14.28%"
+        pane size="14.28%"
+        pane size="14.29%"
+        pane size="14.29%"
+        pane size="14.29%"
+        pane size="14.29%"
+    }
+}

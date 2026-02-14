@@ -179,15 +179,22 @@ install_deps() {
         fi
     fi
 
-    # pulseaudio-utils (for audio on Linux/WSL)
+    # Audio playback tools (for notification sounds)
     if [[ "$PLATFORM" != "mac" ]]; then
-        if ! command -v paplay &>/dev/null; then
-            if command -v apt &>/dev/null; then
-                echo "  Installing pulseaudio-utils..."
-                sudo apt install -y pulseaudio-utils 2>/dev/null && INSTALLED+=("pulseaudio-utils") || SKIPPED+=("pulseaudio-utils (optional)")
-            fi
+        if command -v pw-play &>/dev/null; then
+            echo "  ✓ pw-play (PipeWire)"
+        elif command -v paplay &>/dev/null; then
+            echo "  ✓ paplay (PulseAudio)"
         else
-            echo "  ✓ paplay"
+            if command -v apt &>/dev/null; then
+                if dpkg -l pipewire 2>/dev/null | grep -q '^ii'; then
+                    echo "  Installing PipeWire audio tools..."
+                    sudo apt install -y pipewire-bin sound-theme-freedesktop 2>/dev/null && INSTALLED+=("pipewire-bin") || SKIPPED+=("audio tools (optional)")
+                else
+                    echo "  Installing PulseAudio tools..."
+                    sudo apt install -y pulseaudio-utils sound-theme-freedesktop 2>/dev/null && INSTALLED+=("pulseaudio-utils") || SKIPPED+=("audio tools (optional)")
+                fi
+            fi
         fi
     fi
 
@@ -330,6 +337,7 @@ fi
 # Zellij config
 mkdir -p ~/.config/zellij
 ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl
+ln -sf "$DOTFILES_DIR/zellij/layouts" ~/.config/zellij/layouts
 echo "Linked Zellij config"
 
 # WSL: Detect Windows username and symlink Screenshots folder
