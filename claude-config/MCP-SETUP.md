@@ -78,6 +78,33 @@ Benefits:
 - Cleaner context window (no plugin MCP tool clutter)
 - Easier to manage server configurations in one place
 
+## Recursion Safety
+
+The PMCP gateway uses a two-file architecture. Understanding this is critical to avoid OOM crashes.
+
+### Two-File Architecture
+
+| File | Read by | Purpose |
+|------|---------|---------|
+| `~/.mcp.json` | Claude Code | Tells Claude Code to start the PMCP gateway process |
+| `~/.pmcp.json` | PMCP gateway | Tells the gateway which MCP servers to manage |
+
+### The Invariant
+
+**`~/.pmcp.json` must NEVER contain a `gateway` server entry.**
+
+The recursion loop if violated:
+1. Claude Code reads `~/.mcp.json` → starts PMCP gateway
+2. PMCP reads `~/.pmcp.json` → finds a `gateway` server entry
+3. PMCP starts another PMCP instance → which reads `~/.pmcp.json` again
+4. Infinite loop → OOM crash
+
+The `_WARNING` field in `.pmcp.json` documents this invariant. Do not remove it.
+
+### Global Availability
+
+`~/.mcp.json` is installed by `bootstrap.sh`, making the PMCP gateway available to all Claude Code sessions regardless of working directory. Per-project `.mcp.json` files are only needed if a project requires additional MCP servers beyond the gateway.
+
 ## Troubleshooting
 
 ### "No such file or directory: ~/.pmcp.json"

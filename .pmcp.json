@@ -1,3 +1,4 @@
 {
+  "_WARNING": "DO NOT add a 'gateway' server here. This file is read BY the gateway — adding one creates infinite recursion and OOM crashes.",
   "mcpServers": {}
 }

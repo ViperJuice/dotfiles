@@ -334,6 +334,13 @@ if [ -f "$DOTFILES_DIR/.pmcp.json" ]; then
     CONFIGURED+=("PMCP gateway config")
 fi
 
+# Install MCP configuration (Claude Code gateway entry point)
+if [ -f "$DOTFILES_DIR/.mcp.json" ]; then
+    cp "$DOTFILES_DIR/.mcp.json" ~/.mcp.json
+    echo "Installed MCP configuration to ~/.mcp.json"
+    CONFIGURED+=("MCP gateway entry point")
+fi
+
 # Zellij config
 mkdir -p ~/.config/zellij
 ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl
