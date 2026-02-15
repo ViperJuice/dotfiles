@@ -42,7 +42,7 @@ _editor_open_remote() {
 
     # Use --remote flag (IPC socket, no DISPLAY needed)
     if ssh -o ConnectTimeout=3 -o BatchMode=yes "$display_host" \
-        "$editor --remote ssh-remote+${remote_host} '${target}'" 2>/dev/null; then
+        "DISPLAY=:1 $editor --remote ssh-remote+${remote_host} '${target}'" 2>/dev/null; then
         echo "Opened ${editor} on ${display_host} → ${remote_host}:${target}"
     else
         echo "Could not reach ${display_host}. Falling back to tunnel..."

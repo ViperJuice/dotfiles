@@ -86,23 +86,6 @@ install_deps() {
         echo "  ✓ npm"
     fi
 
-    # Zsh
-    if ! command -v zsh &>/dev/null; then
-        echo "  Installing zsh..."
-        if command -v apt &>/dev/null; then
-            sudo apt install -y zsh
-            INSTALLED+=("zsh")
-        elif command -v brew &>/dev/null; then
-            brew install zsh
-            INSTALLED+=("zsh")
-        else
-            echo "  ⚠ Cannot install zsh automatically"
-            SKIPPED+=("zsh")
-        fi
-    else
-        echo "  ✓ zsh"
-    fi
-
     # VS Code
     if ! command -v code &>/dev/null; then
         if command -v apt &>/dev/null && { [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; }; then
