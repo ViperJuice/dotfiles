@@ -124,7 +124,7 @@ Syncs documentation from all repos in `~/code/` to an Obsidian vault:
 
 ### Skills
 
-Skills are auto-invoked by Claude based on context. Located in `~/.claude/skills/`.
+Skills are auto-invoked by Claude and Codex based on context. Bootstrap mirrors skills to `~/.claude/skills/` and `~/.codex/skills/`.
 
 **wsl-screenshots** (WSL only) - Automatically activated when you mention screenshots, finds and displays Windows screenshots from `~/screenshots`.
 
@@ -216,6 +216,7 @@ Or manually create from template:
 cp -r ~/code/dotfiles/claude-config/skills/_template ~/code/dotfiles/claude-config/skills/my-skill
 # Edit SKILL.md
 ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.claude/skills/my-skill
+ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.codex/skills/my-skill
 ```
 
 See `claude-config/AGENTS.md` for detailed skill creation guide.
@@ -261,6 +262,7 @@ rm -f ~/.claude/settings.json ~/.claude/statusline-custom.sh
 rm -f ~/.claude/notify.sh ~/.claude/notify-clear.sh
 rm -f ~/.claude/stacked-pane.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh
 rm -rf ~/.claude/skills
+rm -f ~/.codex/skills/*
 
 # Remove shell config blocks (look for "# BEGIN DOTFILES:" markers)
 # Edit ~/.zshrc and/or ~/.bashrc manually

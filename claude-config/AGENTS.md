@@ -1,6 +1,6 @@
 # Global Agent Instructions
 
-See `~/.claude/skills/` for available skills.
+See `~/.claude/skills/` and `~/.codex/skills/` for available skills.
 
 ## Creating Custom Skills
 
@@ -18,7 +18,7 @@ Skills extend Claude's capabilities with specialized knowledge, workflows, or to
    ```bash
    cp -r ~/code/dotfiles/claude-config/skills/_template ~/code/dotfiles/claude-config/skills/my-skill
    # Edit SKILL.md with your skill content
-   # Symlink to ~/.claude/skills/my-skill for testing
+   # Symlink to ~/.claude/skills/my-skill and ~/.codex/skills/my-skill for testing
    ```
 
 ### Skill Structure
@@ -44,19 +44,20 @@ my-skill/
 
 ### Skills vs Commands
 
-- **Skills** (recommended): Auto-trigger based on context, defined in `~/.claude/skills/`
+- **Skills** (recommended): Auto-trigger based on context, mirrored by bootstrap to `~/.claude/skills/` and `~/.codex/skills/`
 - **Commands** (legacy): Slash commands like `/command-name`, defined in `~/.claude/commands/`
 
 Most use cases should use skills. Commands are mainly for backward compatibility.
 
 ### Installing Skills
 
-Skills in `~/code/dotfiles/claude-config/skills/` are symlinked to `~/.claude/skills/` by `bootstrap.sh`.
+Skills in `~/code/dotfiles/claude-config/skills/` are symlinked by `bootstrap.sh` to both `~/.claude/skills/` and `~/.codex/skills/`.
 
 To add a new skill:
 1. Create it in `~/code/dotfiles/claude-config/skills/my-skill/`
 2. Run `ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.claude/skills/my-skill`
-3. Skills are loaded automatically on next Claude Code session
+3. Run `ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.codex/skills/my-skill`
+4. Skills are loaded automatically on next Claude/Codex session
 
 ## MCP Gateway
 

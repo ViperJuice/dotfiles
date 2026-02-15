@@ -416,21 +416,23 @@ if [ -f "$DOTFILES_DIR/1password/setup.sh" ]; then
     CONFIGURED+=("1Password SSH agent + git signing")
 fi
 
-# Skills installation (platform-specific)
-mkdir -p ~/.claude/skills
+# Skills installation (platform-specific; Claude + Codex)
+mkdir -p ~/.claude/skills ~/.codex/skills
 
 if [[ "$PLATFORM" == "wsl" ]]; then
     # WSL-specific skills
     ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
+    ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.codex/skills/wsl-screenshots
     echo "Installed WSL-specific skills (wsl-screenshots)"
 fi
 
-# Install anthropic-skills (symlink each skill to ~/.claude/skills/)
+# Install anthropic-skills (symlink each skill to ~/.claude/skills and ~/.codex/skills)
 if [ -d "$DOTFILES_DIR/anthropic-skills/skills" ]; then
     echo "Installing Anthropic skills..."
     for skill_dir in "$DOTFILES_DIR/anthropic-skills/skills/"*/; do
         skill_name=$(basename "$skill_dir")
         ln -sf "$skill_dir" ~/.claude/skills/"$skill_name"
+        ln -sf "$skill_dir" ~/.codex/skills/"$skill_name"
     done
     echo "  ✓ Installed $(ls -d "$DOTFILES_DIR/anthropic-skills/skills/"*/ | wc -l) Anthropic skills"
 fi
