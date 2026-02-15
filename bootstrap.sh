@@ -86,6 +86,46 @@ install_deps() {
         echo "  ✓ npm"
     fi
 
+    # VS Code
+    if ! command -v code &>/dev/null; then
+        if command -v apt &>/dev/null && { [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; }; then
+            # Desktop machine: install full VS Code via apt repo
+            echo "  Installing VS Code (desktop)..."
+            if [ ! -f /etc/apt/keyrings/packages.microsoft.gpg ]; then
+                wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /tmp/packages.microsoft.gpg
+                sudo install -D -o root -g root -m 644 /tmp/packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+                echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | sudo tee /etc/apt/sources.list.d/vscode.list > /dev/null
+                sudo apt update -qq
+            fi
+            sudo apt install -y code 2>/dev/null && INSTALLED+=("code (VS Code)") || SKIPPED+=("code (optional)")
+        else
+            # Headless server: install standalone CLI (supports tunnels)
+            echo "  Installing VS Code CLI (headless)..."
+            local vscode_url="https://update.code.visualstudio.com/latest/cli-linux-x64/stable"
+            mkdir -p "$HOME/.local/bin"
+            curl -sL "$vscode_url" -o /tmp/vscode-cli.tar.gz && tar -xzf /tmp/vscode-cli.tar.gz -C "$HOME/.local/bin" && rm /tmp/vscode-cli.tar.gz && INSTALLED+=("code (CLI)") || SKIPPED+=("code (optional)")
+        fi
+    else
+        echo "  ✓ code"
+    fi
+
+    # Cursor
+    if ! command -v cursor &>/dev/null; then
+        if command -v apt &>/dev/null && { [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; }; then
+            # Desktop machine: cursor is typically installed via .deb
+            echo "  ℹ Cursor: Install from https://cursor.com/downloads"
+            SKIPPED+=("cursor (install manually)")
+        else
+            # Headless server: install standalone CLI (supports tunnels)
+            echo "  Installing Cursor CLI (headless)..."
+            local cursor_url="https://api2.cursor.sh/updates/download-latest?os=cli-linux-x64&channel=stable"
+            mkdir -p "$HOME/.local/bin"
+            curl -sL "$cursor_url" -o /tmp/cursor-cli.tar.gz && tar -xzf /tmp/cursor-cli.tar.gz -C "$HOME/.local/bin" && rm /tmp/cursor-cli.tar.gz && INSTALLED+=("cursor (CLI)") || SKIPPED+=("cursor (optional)")
+        fi
+    else
+        echo "  ✓ cursor"
+    fi
+
     # Claude Code CLI
     if ! command -v claude &>/dev/null; then
         echo "  Installing Claude Code CLI..."
@@ -308,6 +348,7 @@ ln -sf "$DOTFILES_DIR/claude-config/bash-pane.sh" ~/.claude/bash-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/stacked-pane.sh" ~/.claude/stacked-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
+ln -sf "$DOTFILES_DIR/scripts/editor-remote.sh" ~/.claude/editor-remote.sh
 ln -sf "$DOTFILES_DIR/claude-config/gateway-guidance.yaml" ~/.claude/gateway-guidance.yaml
 # Symlink commands directory (remove existing dir/link first to avoid nesting)
 rm -rf ~/.claude/commands 2>/dev/null
@@ -378,6 +419,9 @@ read -r -d '' PATH_CONFIG << 'EOF' || true
 # Add local bin and Claude local bin to PATH
 export PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH"
 
+# Display host for remote editor wrappers (Tailscale hostname)
+export DOTFILES_DISPLAY_HOST="display"
+
 # Initialize nvm (Node Version Manager)
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -446,6 +490,13 @@ alias claude="claude --allow-dangerously-skip-permissions"
 export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
 EOF
 
+read -r -d '' EDITOR_REMOTE << 'EOF' || true
+# Remote editor wrappers (cursor/code work seamlessly over SSH)
+if [ -f "$HOME/.claude/editor-remote.sh" ]; then
+    source "$HOME/.claude/editor-remote.sh"
+fi
+EOF
+
 read -r -d '' ZSH_TABTITLE << 'EOF' || true
 # Update Windows Terminal tab title to current git repo:branch or directory name
 function precmd() {
@@ -490,6 +541,7 @@ EOF
 for rc in ~/.bashrc ~/.zshrc; do
     [ -f "$rc" ] && add_managed_block "$rc" "PATH_CONFIG" "$PATH_CONFIG"
     [ -f "$rc" ] && add_managed_block "$rc" "CLAUDE_CONFIG" "$CLAUDE_CONFIG"
+    [ -f "$rc" ] && add_managed_block "$rc" "EDITOR_REMOTE" "$EDITOR_REMOTE"
 done
 
 [ -f ~/.zshrc ] && add_managed_block ~/.zshrc "TABTITLE" "$ZSH_TABTITLE"
