@@ -1,0 +1,220 @@
+#!/bin/bash
+# oc-registry — List, stop, and prune OpenCode backend instances
+#
+# Usage:
+#   oc-registry              List all registered repos and their status
+#   oc-registry stop <id>    Stop backend for a specific repo
+#   oc-registry stop-all     Stop all backends
+#   oc-registry prune        Remove entries for repos whose worktrees no longer exist
+
+set -euo pipefail
+
+REGISTRY_DIR="$HOME/.opencode/repos"
+
+# ─── Debug logging ───────────────────────────────────────────────────────────
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "${CLAUDE_DOTFILES_DEBUG:-}" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] [oc-registry] $*" >> "$LOG_DIR/opencode.log"
+    fi
+}
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+is_pid_alive() {
+    local pid="$1"
+    kill -0 "$pid" 2>/dev/null
+}
+
+read_file() {
+    [[ -f "$1" ]] && cat "$1" || echo ""
+}
+
+format_size() {
+    local bytes="$1"
+    if [[ "$bytes" -ge 1073741824 ]]; then
+        echo "$(( bytes / 1073741824 ))G"
+    elif [[ "$bytes" -ge 1048576 ]]; then
+        echo "$(( bytes / 1048576 ))M"
+    elif [[ "$bytes" -ge 1024 ]]; then
+        echo "$(( bytes / 1024 ))K"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+# ─── List ────────────────────────────────────────────────────────────────────
+
+cmd_list() {
+    if [[ ! -d "$REGISTRY_DIR" ]]; then
+        echo "No registry directory. Run 'oc' to create one."
+        exit 0
+    fi
+
+    local found=0
+    printf "%-14s %-30s %-7s %-8s %-8s %s\n" "REPO_ID" "NAME" "PORT" "PID" "STATUS" "DB_SIZE"
+    printf "%-14s %-30s %-7s %-8s %-8s %s\n" "──────────────" "──────────────────────────────" "───────" "────────" "────────" "───────"
+
+    for repo_dir in "$REGISTRY_DIR"/*/; do
+        [[ -d "$repo_dir" ]] || continue
+        found=1
+        local repo_id
+        repo_id=$(basename "$repo_dir")
+        local name port pid status db_size
+
+        name=$(read_file "$repo_dir/name")
+        port=$(read_file "$repo_dir/port")
+        pid=$(read_file "$repo_dir/pid")
+
+        if [[ -n "$pid" ]] && is_pid_alive "$pid"; then
+            status="running"
+        else
+            status="stopped"
+        fi
+
+        local db_path="$repo_dir/data/opencode/opencode.db"
+        if [[ -f "$db_path" ]]; then
+            local raw_size
+            raw_size=$(stat -c%s "$db_path" 2>/dev/null || echo 0)
+            db_size=$(format_size "$raw_size")
+        else
+            db_size="-"
+        fi
+
+        printf "%-14s %-30s %-7s %-8s %-8s %s\n" "$repo_id" "${name:--}" "${port:--}" "${pid:--}" "$status" "$db_size"
+    done
+
+    if [[ "$found" -eq 0 ]]; then
+        echo "(no registered repos)"
+    fi
+}
+
+# ─── Stop ────────────────────────────────────────────────────────────────────
+
+cmd_stop() {
+    local target="$1"
+    local repo_dir="$REGISTRY_DIR/$target"
+
+    if [[ ! -d "$repo_dir" ]]; then
+        echo "Error: repo '$target' not found in registry"
+        exit 1
+    fi
+
+    local pid
+    pid=$(read_file "$repo_dir/pid")
+    if [[ -z "$pid" ]]; then
+        echo "No PID recorded for $target"
+        return
+    fi
+
+    if is_pid_alive "$pid"; then
+        echo "Stopping $target (PID $pid)..."
+        kill "$pid" 2>/dev/null || true
+        # Wait up to 5 seconds for graceful shutdown
+        for _ in {1..10}; do
+            is_pid_alive "$pid" || break
+            sleep 0.5
+        done
+        if is_pid_alive "$pid"; then
+            echo "  Force killing..."
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        echo "  Stopped."
+        debug_log "stopped repo=$target pid=$pid"
+    else
+        echo "$target already stopped (stale PID $pid)"
+    fi
+
+    # Clear runtime files
+    rm -f "$repo_dir/pid" "$repo_dir/port" "$repo_dir/endpoint"
+}
+
+# ─── Stop All ────────────────────────────────────────────────────────────────
+
+cmd_stop_all() {
+    if [[ ! -d "$REGISTRY_DIR" ]]; then
+        echo "No registry directory."
+        exit 0
+    fi
+
+    local count=0
+    for repo_dir in "$REGISTRY_DIR"/*/; do
+        [[ -d "$repo_dir" ]] || continue
+        local repo_id pid
+        repo_id=$(basename "$repo_dir")
+        pid=$(read_file "$repo_dir/pid")
+        if [[ -n "$pid" ]] && is_pid_alive "$pid"; then
+            cmd_stop "$repo_id"
+            count=$((count + 1))
+        fi
+    done
+
+    if [[ "$count" -eq 0 ]]; then
+        echo "No running backends to stop."
+    else
+        echo "Stopped $count backend(s)."
+    fi
+}
+
+# ─── Prune ───────────────────────────────────────────────────────────────────
+
+cmd_prune() {
+    if [[ ! -d "$REGISTRY_DIR" ]]; then
+        echo "No registry directory."
+        exit 0
+    fi
+
+    local pruned=0
+    for repo_dir in "$REGISTRY_DIR"/*/; do
+        [[ -d "$repo_dir" ]] || continue
+        local repo_id worktree
+        repo_id=$(basename "$repo_dir")
+        worktree=$(read_file "$repo_dir/worktree")
+
+        if [[ -z "$worktree" ]] || [[ ! -d "$worktree" ]]; then
+            # Stop any running backend first
+            local pid
+            pid=$(read_file "$repo_dir/pid")
+            if [[ -n "$pid" ]] && is_pid_alive "$pid"; then
+                kill "$pid" 2>/dev/null || true
+            fi
+
+            echo "Pruning $repo_id (worktree: ${worktree:-(unknown)})"
+            rm -rf "$repo_dir"
+            pruned=$((pruned + 1))
+            debug_log "pruned repo=$repo_id worktree=$worktree"
+        fi
+    done
+
+    if [[ "$pruned" -eq 0 ]]; then
+        echo "Nothing to prune."
+    else
+        echo "Pruned $pruned stale repo(s)."
+    fi
+}
+
+# ─── Main ────────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    stop)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: oc-registry stop <repo_id>"
+            exit 1
+        fi
+        cmd_stop "$2"
+        ;;
+    stop-all)
+        cmd_stop_all
+        ;;
+    prune)
+        cmd_prune
+        ;;
+    ""|list)
+        cmd_list
+        ;;
+    *)
+        echo "Usage: oc-registry [list|stop <id>|stop-all|prune]"
+        exit 1
+        ;;
+esac

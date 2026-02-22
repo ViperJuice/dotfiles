@@ -1,0 +1,295 @@
+#!/bin/bash
+# oc — OpenCode wrapper with per-repo XDG isolation
+#
+# Provides runtime isolation for concurrent multi-repo OpenCode usage by
+# setting XDG_DATA_HOME and XDG_STATE_HOME per-repo, so each repo gets its
+# own SQLite database, snapshots, and logs.
+#
+# Usage:
+#   oc                   Launch TUI (isolated)
+#   oc serve             Start backend (isolated, dynamic port)
+#   oc run <msg>         Attach to running backend or start one, then run
+#   oc audit             Run diagnostics
+#   oc registry [cmd]    Manage running instances
+#   oc cleanup           Prune stale repos, compact DBs
+#   oc <anything>        Passthrough to opencode (isolated)
+
+set -euo pipefail
+
+REGISTRY_DIR="$HOME/.opencode/repos"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ─── Debug logging ───────────────────────────────────────────────────────────
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "${CLAUDE_DOTFILES_DEBUG:-}" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] [oc] $*" >> "$LOG_DIR/opencode.log"
+    fi
+}
+
+# ─── Repo identification ────────────────────────────────────────────────────
+
+resolve_repo() {
+    # Get git worktree root (not just .git directory)
+    local worktree
+    worktree=$(git rev-parse --show-toplevel 2>/dev/null) || {
+        echo "Error: not inside a git repository" >&2
+        exit 1
+    }
+    local real_path
+    real_path=$(realpath "$worktree")
+    local repo_id
+    repo_id=$(echo -n "$real_path" | sha1sum | cut -c1-12)
+    local repo_name
+    repo_name=$(basename "$real_path")
+
+    echo "$repo_id"$'\t'"$real_path"$'\t'"$repo_name"
+}
+
+# ─── Per-repo directory setup ────────────────────────────────────────────────
+
+ensure_repo_dir() {
+    local repo_id="$1" worktree="$2" name="$3"
+    local repo_dir="$REGISTRY_DIR/$repo_id"
+
+    mkdir -p "$repo_dir/data/opencode" "$repo_dir/state/opencode"
+
+    # Write metadata (idempotent)
+    echo "$name" > "$repo_dir/name"
+    echo "$worktree" > "$repo_dir/worktree"
+
+    echo "$repo_dir"
+}
+
+# ─── XDG export ──────────────────────────────────────────────────────────────
+
+export_xdg() {
+    local repo_dir="$1"
+    export XDG_DATA_HOME="$repo_dir/data"
+    export XDG_STATE_HOME="$repo_dir/state"
+    debug_log "XDG_DATA_HOME=$XDG_DATA_HOME XDG_STATE_HOME=$XDG_STATE_HOME"
+}
+
+# ─── Write lock (flock-based) ────────────────────────────────────────────────
+
+acquire_write_lock() {
+    local repo_dir="$1"
+    local lock_file="$repo_dir/write.lock"
+    exec 9>"$lock_file"
+    if ! flock -n 9; then
+        echo "Error: another write session is active for this repo" >&2
+        exit 1
+    fi
+    debug_log "acquired write lock: $lock_file"
+}
+
+release_write_lock() {
+    flock -u 9 2>/dev/null || true
+}
+
+# ─── Backend management ─────────────────────────────────────────────────────
+
+is_backend_healthy() {
+    local endpoint="$1"
+    # Quick health check via HTTP
+    curl -sf --max-time 2 "${endpoint}/health" >/dev/null 2>&1 || \
+    curl -sf --max-time 2 "$endpoint" >/dev/null 2>&1
+}
+
+ensure_running() {
+    local repo_dir="$1"
+    local pid_file="$repo_dir/pid"
+    local port_file="$repo_dir/port"
+    local endpoint_file="$repo_dir/endpoint"
+
+    # Check existing backend
+    if [[ -f "$pid_file" ]]; then
+        local existing_pid
+        existing_pid=$(cat "$pid_file")
+        if kill -0 "$existing_pid" 2>/dev/null; then
+            if [[ -f "$endpoint_file" ]]; then
+                local existing_endpoint
+                existing_endpoint=$(cat "$endpoint_file")
+                debug_log "backend already running pid=$existing_pid endpoint=$existing_endpoint"
+                echo "$existing_endpoint"
+                return 0
+            fi
+        fi
+        # Stale PID — clean up
+        rm -f "$pid_file" "$port_file" "$endpoint_file"
+        debug_log "cleaned stale pid=$existing_pid"
+    fi
+
+    # Start new backend with dynamic port
+    debug_log "starting new backend in $repo_dir"
+
+    # Use port 0 to let OS assign a free port
+    # Capture the output to extract the actual port
+    local log_file="$repo_dir/serve.log"
+    opencode serve --port 0 > "$log_file" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$pid_file"
+    debug_log "launched backend pid=$new_pid"
+
+    # Wait for port to appear in output (up to 10 seconds)
+    local port=""
+    for i in {1..20}; do
+        sleep 0.5
+        # Check if process is still alive
+        if ! kill -0 "$new_pid" 2>/dev/null; then
+            echo "Error: backend exited unexpectedly. Check $log_file" >&2
+            rm -f "$pid_file"
+            exit 1
+        fi
+        # Try to extract port from log output
+        port=$(grep -oP '(?<=:)\d{4,5}' "$log_file" 2>/dev/null | tail -1 || true)
+        if [[ -n "$port" ]]; then
+            break
+        fi
+        # Also try lsof to find the listening port
+        port=$(lsof -Pan -p "$new_pid" -iTCP -sTCP:LISTEN 2>/dev/null | \
+               grep -oP ':\K\d{4,5}' | head -1 || true)
+        if [[ -n "$port" ]]; then
+            break
+        fi
+    done
+
+    if [[ -z "$port" ]]; then
+        echo "Error: could not determine backend port after 10s. Check $log_file" >&2
+        kill "$new_pid" 2>/dev/null || true
+        rm -f "$pid_file"
+        exit 1
+    fi
+
+    local endpoint="http://127.0.0.1:$port"
+    echo "$port" > "$port_file"
+    echo "$endpoint" > "$endpoint_file"
+    debug_log "backend ready pid=$new_pid port=$port endpoint=$endpoint"
+
+    # Start memory logging in background
+    start_memory_logging "$repo_dir" "$new_pid" &
+
+    echo "$endpoint"
+}
+
+# ─── Memory logging ─────────────────────────────────────────────────────────
+
+start_memory_logging() {
+    local repo_dir="$1" pid="$2"
+    local mem_log="$repo_dir/memory.log"
+    disown 2>/dev/null || true
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local rss
+        rss=$(ps -o rss= -p "$pid" 2>/dev/null || echo 0)
+        if [[ "$rss" -gt 0 ]]; then
+            echo "$(date -Iseconds) pid=$pid rss_kb=$rss" >> "$mem_log"
+        fi
+        sleep 300  # 5 minutes
+    done
+}
+
+# ─── Command routing ────────────────────────────────────────────────────────
+
+main() {
+    local cmd="${1:-}"
+
+    # Delegate to companion scripts (no repo context needed)
+    case "$cmd" in
+        audit)
+            exec "$SCRIPT_DIR/oc-audit" "${@:2}"
+            ;;
+        registry)
+            exec "$SCRIPT_DIR/oc-registry" "${@:2}"
+            ;;
+        cleanup)
+            exec "$SCRIPT_DIR/oc-cleanup" "${@:2}"
+            ;;
+    esac
+
+    # All other commands need repo context
+    local repo_info repo_id worktree name
+    repo_info=$(resolve_repo)
+    IFS=$'\t' read -r repo_id worktree name <<< "$repo_info"
+
+    local repo_dir
+    repo_dir=$(ensure_repo_dir "$repo_id" "$worktree" "$name")
+    export_xdg "$repo_dir"
+
+    debug_log "cmd=$cmd repo=$repo_id name=$name worktree=$worktree"
+
+    case "$cmd" in
+        "")
+            # No args: launch TUI
+            exec opencode
+            ;;
+        serve)
+            # Start backend with isolation
+            acquire_write_lock "$repo_dir"
+            trap 'release_write_lock' EXIT
+
+            # Use port 0 for dynamic allocation, record results
+            local log_file="$repo_dir/serve.log"
+            local pid_file="$repo_dir/pid"
+
+            opencode serve "${@:2}" > "$log_file" 2>&1 &
+            local serve_pid=$!
+            echo "$serve_pid" > "$pid_file"
+
+            # Wait for port
+            local port=""
+            for i in {1..20}; do
+                sleep 0.5
+                if ! kill -0 "$serve_pid" 2>/dev/null; then
+                    echo "Error: backend exited unexpectedly. Check $log_file" >&2
+                    rm -f "$pid_file"
+                    exit 1
+                fi
+                port=$(lsof -Pan -p "$serve_pid" -iTCP -sTCP:LISTEN 2>/dev/null | \
+                       grep -oP ':\K\d{4,5}' | head -1 || true)
+                [[ -n "$port" ]] && break
+            done
+
+            if [[ -z "$port" ]]; then
+                # Fallback: parse log
+                port=$(grep -oP '(?<=:)\d{4,5}' "$log_file" 2>/dev/null | tail -1 || true)
+            fi
+
+            if [[ -n "$port" ]]; then
+                echo "$port" > "$repo_dir/port"
+                echo "http://127.0.0.1:$port" > "$repo_dir/endpoint"
+                echo "Backend started: PID $serve_pid, port $port"
+                echo "  Repo:     $name ($repo_id)"
+                echo "  Endpoint: http://127.0.0.1:$port"
+
+                # Start memory logging
+                start_memory_logging "$repo_dir" "$serve_pid" &
+                disown 2>/dev/null || true
+            else
+                echo "Backend started: PID $serve_pid (port detection pending)"
+                echo "  Check: $log_file"
+            fi
+
+            # Wait for backend
+            wait "$serve_pid" 2>/dev/null || true
+            ;;
+        run)
+            # Auto-attach to existing backend or start one
+            if [[ $# -lt 2 ]]; then
+                echo "Usage: oc run <message>" >&2
+                exit 1
+            fi
+            local endpoint
+            endpoint=$(ensure_running "$repo_dir")
+            debug_log "run: attaching to $endpoint"
+            exec opencode run --attach "$endpoint" "${@:2}"
+            ;;
+        *)
+            # Passthrough to opencode with isolation
+            exec opencode "$@"
+            ;;
+    esac
+}
+
+main "$@"

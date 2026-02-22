@@ -527,6 +527,59 @@ with open(config_path, 'w') as f:
     CONFIGURED+=("OpenCode MCP")
 fi
 
+# =============================================================================
+# OpenCode Runtime Isolation (oc wrapper)
+# =============================================================================
+
+if command -v opencode &>/dev/null || [ -d ~/.config/opencode ]; then
+    # Symlink oc tools to ~/.local/bin
+    mkdir -p ~/.local/bin
+    for tool in oc oc-audit oc-registry oc-cleanup; do
+        ln -sf "$DOTFILES_DIR/opencode-config/bin/$tool" ~/.local/bin/"$tool"
+    done
+
+    # Create registry directory
+    mkdir -p ~/.opencode/repos
+
+    echo "Installed OpenCode runtime tools (oc, oc-audit, oc-registry, oc-cleanup)"
+    CONFIGURED+=("OpenCode Runtime")
+
+    # Resource hardening: inotify watches and instances
+    SYSCTL_CONF="/etc/sysctl.d/90-opencode.conf"
+    INOTIFY_WATCHES=$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 0)
+    INOTIFY_INSTANCES=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)
+
+    if [[ "$INOTIFY_WATCHES" -lt 1048576 ]] || [[ "$INOTIFY_INSTANCES" -lt 1024 ]]; then
+        echo "  inotify limits are low (watches=$INOTIFY_WATCHES, instances=$INOTIFY_INSTANCES)"
+        if command -v sudo &>/dev/null; then
+            echo "  Writing $SYSCTL_CONF (requires sudo)..."
+            sudo tee "$SYSCTL_CONF" > /dev/null 2>&1 << 'SYSCTL' || {
+fs.inotify.max_user_watches=1048576
+fs.inotify.max_user_instances=1024
+SYSCTL
+                echo "  ⚠ Could not write sysctl config (no sudo access)"
+                SKIPPED+=("inotify hardening")
+            }
+            if [[ -f "$SYSCTL_CONF" ]]; then
+                sudo sysctl --system > /dev/null 2>&1 || true
+                echo "  ✓ inotify limits updated"
+                CONFIGURED+=("inotify hardening")
+            fi
+        else
+            echo "  ⚠ sudo not available — manually set inotify limits"
+            SKIPPED+=("inotify hardening")
+        fi
+    fi
+
+    # Run post-install diagnostic
+    if command -v oc-audit &>/dev/null || [[ -x "$DOTFILES_DIR/opencode-config/bin/oc-audit" ]]; then
+        echo ""
+        echo "Running OpenCode audit..."
+        "$DOTFILES_DIR/opencode-config/bin/oc-audit" || true
+        echo ""
+    fi
+fi
+
 # Zellij config
 mkdir -p ~/.config/zellij
 ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl

@@ -1,0 +1,135 @@
+#!/bin/bash
+# oc-cleanup — Prune stale repos, compact SQLite DBs, clean old logs
+#
+# Usage: oc-cleanup [--dry-run]
+
+set -euo pipefail
+
+REGISTRY_DIR="$HOME/.opencode/repos"
+DRY_RUN=0
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+
+# ─── Debug logging ───────────────────────────────────────────────────────────
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "${CLAUDE_DOTFILES_DEBUG:-}" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] [oc-cleanup] $*" >> "$LOG_DIR/opencode.log"
+    fi
+}
+
+if [[ ! -d "$REGISTRY_DIR" ]]; then
+    echo "No registry directory. Nothing to clean."
+    exit 0
+fi
+
+echo "OpenCode Cleanup"
+echo "================"
+echo ""
+
+# ─── 1. Prune stale repos ───────────────────────────────────────────────────
+echo "Pruning stale repos..."
+PRUNED=0
+for repo_dir in "$REGISTRY_DIR"/*/; do
+    [[ -d "$repo_dir" ]] || continue
+    local_worktree=""
+    [[ -f "$repo_dir/worktree" ]] && local_worktree=$(cat "$repo_dir/worktree")
+
+    if [[ -z "$local_worktree" ]] || [[ ! -d "$local_worktree" ]]; then
+        repo_id=$(basename "$repo_dir")
+        name=""
+        [[ -f "$repo_dir/name" ]] && name=$(cat "$repo_dir/name")
+
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "  [dry-run] Would prune: $repo_id (${name:-(unknown)})"
+        else
+            # Stop running backend
+            pid=""
+            [[ -f "$repo_dir/pid" ]] && pid=$(cat "$repo_dir/pid")
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                kill "$pid" 2>/dev/null || true
+            fi
+            rm -rf "$repo_dir"
+            echo "  Pruned: $repo_id (${name:-(unknown)})"
+            debug_log "pruned repo=$repo_id"
+        fi
+        PRUNED=$((PRUNED + 1))
+    fi
+done
+echo "  $PRUNED stale repo(s) ${DRY_RUN:+would be }pruned"
+echo ""
+
+# ─── 2. Compact SQLite databases ────────────────────────────────────────────
+echo "Compacting databases..."
+COMPACTED=0
+for repo_dir in "$REGISTRY_DIR"/*/; do
+    [[ -d "$repo_dir" ]] || continue
+    db_path="$repo_dir/data/opencode/opencode.db"
+    [[ -f "$db_path" ]] || continue
+
+    # Skip if backend is running (DB may be locked)
+    pid=""
+    [[ -f "$repo_dir/pid" ]] && pid=$(cat "$repo_dir/pid")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        echo "  Skipping $(basename "$repo_dir") (backend running)"
+        continue
+    fi
+
+    before=$(stat -c%s "$db_path" 2>/dev/null || echo 0)
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "  [dry-run] Would VACUUM: $(basename "$repo_dir") ($(( before / 1048576 ))M)"
+    else
+        sqlite3 "$db_path" "VACUUM;" 2>/dev/null || true
+        after=$(stat -c%s "$db_path" 2>/dev/null || echo 0)
+        saved=$(( before - after ))
+        if [[ "$saved" -gt 0 ]]; then
+            echo "  Compacted $(basename "$repo_dir"): $(( saved / 1024 ))K freed"
+        else
+            echo "  $(basename "$repo_dir"): already compact"
+        fi
+        debug_log "vacuum repo=$(basename "$repo_dir") before=$before after=$after"
+    fi
+    COMPACTED=$((COMPACTED + 1))
+done
+echo "  $COMPACTED database(s) processed"
+echo ""
+
+# ─── 3. Clean old logs and tool-output ───────────────────────────────────────
+echo "Cleaning old files (>7 days)..."
+CLEANED=0
+for repo_dir in "$REGISTRY_DIR"/*/; do
+    [[ -d "$repo_dir" ]] || continue
+    for subdir in "state/opencode/logs" "state/opencode/tool-output"; do
+        target="$repo_dir/$subdir"
+        [[ -d "$target" ]] || continue
+
+        old_files=$(find "$target" -type f -mtime +7 2>/dev/null | wc -l)
+        if [[ "$old_files" -gt 0 ]]; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                echo "  [dry-run] Would clean $old_files files in $(basename "$repo_dir")/$subdir"
+            else
+                find "$target" -type f -mtime +7 -delete 2>/dev/null || true
+                echo "  Cleaned $old_files files in $(basename "$repo_dir")/$subdir"
+            fi
+            CLEANED=$((CLEANED + old_files))
+        fi
+    done
+
+    # Clean old memory logs
+    mem_log="$repo_dir/memory.log"
+    if [[ -f "$mem_log" ]]; then
+        lines=$(wc -l < "$mem_log")
+        if [[ "$lines" -gt 2016 ]]; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                echo "  [dry-run] Would trim memory.log in $(basename "$repo_dir")"
+            else
+                tail -n 2016 "$mem_log" > "$mem_log.tmp" && mv "$mem_log.tmp" "$mem_log"
+                echo "  Trimmed memory.log in $(basename "$repo_dir")"
+            fi
+        fi
+    fi
+done
+echo "  $CLEANED old file(s) ${DRY_RUN:+would be }cleaned"
+
+echo ""
+echo "Done."

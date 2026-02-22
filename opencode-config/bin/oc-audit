@@ -1,0 +1,126 @@
+#!/bin/bash
+# oc-audit — Diagnostic report for OpenCode runtime health
+# Reports on shared state, resource limits, running instances, and port conflicts
+#
+# Usage: oc-audit
+
+set -euo pipefail
+
+# ─── Debug logging (gated by CLAUDE_DOTFILES_DEBUG) ──────────────────────────
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "${CLAUDE_DOTFILES_DEBUG:-}" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] [oc-audit] $*" >> "$LOG_DIR/opencode.log"
+    fi
+}
+
+PASS=0
+FAIL=0
+WARN=0
+
+report() {
+    local status="$1" label="$2" detail="$3"
+    case "$status" in
+        PASS) printf "  \033[32mPASS\033[0m  %s — %s\n" "$label" "$detail"; PASS=$((PASS + 1)) ;;
+        FAIL) printf "  \033[31mFAIL\033[0m  %s — %s\n" "$label" "$detail"; FAIL=$((FAIL + 1)) ;;
+        WARN) printf "  \033[33mWARN\033[0m  %s — %s\n" "$label" "$detail"; WARN=$((WARN + 1)) ;;
+    esac
+}
+
+echo "OpenCode Runtime Audit"
+echo "======================"
+echo ""
+
+# ─── 1. Shared SQLite DB ─────────────────────────────────────────────────────
+SHARED_DB="$HOME/.local/share/opencode/opencode.db"
+if [[ -f "$SHARED_DB" ]]; then
+    DB_SIZE=$(du -sh "$SHARED_DB" 2>/dev/null | cut -f1)
+    report FAIL "Shared SQLite DB" "exists at $SHARED_DB ($DB_SIZE)"
+else
+    report PASS "Shared SQLite DB" "no shared DB found"
+fi
+
+# ─── 2. Per-repo isolation ───────────────────────────────────────────────────
+REGISTRY_DIR="$HOME/.opencode/repos"
+if [[ -d "$REGISTRY_DIR" ]]; then
+    REPO_COUNT=$(find "$REGISTRY_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    if [[ "$REPO_COUNT" -gt 0 ]]; then
+        report PASS "Per-repo isolation" "$REPO_COUNT repo(s) with isolated state"
+    else
+        report WARN "Per-repo isolation" "registry dir exists but empty"
+    fi
+else
+    report WARN "Per-repo isolation" "no registry directory (~/.opencode/repos)"
+fi
+
+# ─── 3. Running instances ───────────────────────────────────────────────────
+INSTANCE_COUNT=$(pgrep -f 'opencode' -c 2>/dev/null || echo 0)
+INSTANCE_PIDS=$(pgrep -f 'opencode' -a 2>/dev/null || true)
+if [[ "$INSTANCE_COUNT" -eq 0 ]]; then
+    report PASS "Running instances" "none"
+elif [[ "$INSTANCE_COUNT" -le 4 ]]; then
+    report PASS "Running instances" "$INSTANCE_COUNT active"
+else
+    report WARN "Running instances" "$INSTANCE_COUNT active (>4 may cause contention)"
+fi
+
+# ─── 4. Port collisions ─────────────────────────────────────────────────────
+if [[ -d "$REGISTRY_DIR" ]]; then
+    PORTS=()
+    while IFS= read -r port_file; do
+        [[ -f "$port_file" ]] && PORTS+=("$(cat "$port_file")")
+    done < <(find "$REGISTRY_DIR" -name "port" 2>/dev/null)
+
+    UNIQUE_PORTS=$(printf '%s\n' "${PORTS[@]}" 2>/dev/null | sort -u | wc -l)
+    TOTAL_PORTS=${#PORTS[@]}
+    if [[ "$TOTAL_PORTS" -eq 0 ]]; then
+        report PASS "Port allocation" "no ports registered"
+    elif [[ "$UNIQUE_PORTS" -eq "$TOTAL_PORTS" ]]; then
+        report PASS "Port allocation" "$TOTAL_PORTS ports, no collisions"
+    else
+        report FAIL "Port allocation" "collision detected ($TOTAL_PORTS ports, $UNIQUE_PORTS unique)"
+    fi
+else
+    report WARN "Port allocation" "no registry to check"
+fi
+
+# ─── 5. inotify watches ─────────────────────────────────────────────────────
+INOTIFY_MAX=$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 0)
+INOTIFY_CURRENT=$(find /proc/*/fdinfo -name '*.fdinfo' 2>/dev/null | head -1 > /dev/null; \
+    cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 0)
+
+if [[ "$INOTIFY_MAX" -ge 1048576 ]]; then
+    report PASS "inotify max_user_watches" "$INOTIFY_MAX"
+else
+    report FAIL "inotify max_user_watches" "$INOTIFY_MAX (need >= 1,048,576)"
+fi
+
+INOTIFY_INSTANCES=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)
+if [[ "$INOTIFY_INSTANCES" -ge 1024 ]]; then
+    report PASS "inotify max_user_instances" "$INOTIFY_INSTANCES"
+else
+    report WARN "inotify max_user_instances" "$INOTIFY_INSTANCES (recommend >= 1,024)"
+fi
+
+# ─── 6. File descriptor limit ───────────────────────────────────────────────
+FD_LIMIT=$(ulimit -n 2>/dev/null || echo 0)
+if [[ "$FD_LIMIT" -ge 65535 ]]; then
+    report PASS "File descriptor limit" "$FD_LIMIT"
+else
+    report WARN "File descriptor limit" "$FD_LIMIT (recommend >= 65,535)"
+fi
+
+# ─── 7. OpenCode binary ─────────────────────────────────────────────────────
+if command -v opencode &>/dev/null; then
+    OC_PATH=$(which opencode)
+    report PASS "OpenCode binary" "$OC_PATH"
+else
+    report FAIL "OpenCode binary" "not found in PATH"
+fi
+
+# ─── Summary ─────────────────────────────────────────────────────────────────
+echo ""
+echo "Summary: $PASS passed, $FAIL failed, $WARN warnings"
+debug_log "audit complete: pass=$PASS fail=$FAIL warn=$WARN"
+exit "$FAIL"
