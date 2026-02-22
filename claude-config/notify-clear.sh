@@ -51,4 +51,7 @@ fi
 
 zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null
 
+# Clean up orphaned notifications older than 4 hours for ANY pane in this session
+find "$state_dir" -name "zellij-notify-${ZELLIJ_SESSION_NAME:-default}-*" -mmin +240 -delete 2>/dev/null
+
 exit 0

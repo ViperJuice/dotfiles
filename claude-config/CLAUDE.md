@@ -54,6 +54,10 @@ An MCP gateway is available via tools prefixed with `mcp__gateway__`. Before rea
 - `gateway_cancel(request_id="server::id")` — cancel stuck request
 - `gateway_provision(server_name="...")` — install and start a new MCP server
 
+## Cross-Tool Instructions
+
+Universal development principles are maintained in `shared/instructions/core.md` and distributed to all five coding tools (Claude Code, Codex, OpenCode, Gemini CLI, Cursor IDE) by bootstrap.
+
 ## Efficiency Skills
 
 The following skills are installed to prevent common anti-patterns:

@@ -1,8 +1,18 @@
 # Dotfiles
 
-Personal configuration for development environment, focused on Claude Code CLI customization with Zellij terminal multiplexer integration.
+Personal configuration for development environment, supporting five AI coding tools from a single source of truth with Zellij terminal multiplexer integration.
 
 **Target platforms:** Ubuntu (cloud server) and WSL Ubuntu.
+
+## Supported Tools
+
+| Tool | Instructions | Commands | Agents | Skills | MCP Gateway |
+|------|:-----------:|:--------:|:------:|:------:|:-----------:|
+| Claude Code | CLAUDE.md | Shared + Claude | - | Yes | Yes |
+| Codex | Project CLAUDE.md | - | - | Yes | - |
+| OpenCode | - | Shared | Shared | - | Yes |
+| Gemini CLI | GEMINI.md | - | - | - | Yes |
+| Cursor IDE | .mdc rules | - | - | - | Yes |
 
 ## Quick Start
 
@@ -19,7 +29,8 @@ The bootstrap script will:
 4. **Configure your shell** with aliases and tab title
 5. **Set up Zellij integration** (notifications, agent panes, background shells)
 6. **Install skills** (WSL screenshots, Anthropic skills marketplace)
-7. **Set up Obsidian docs sync** (hourly cron job)
+7. **Configure other tools** (OpenCode, Gemini CLI, Cursor IDE — if installed)
+8. **Set up Obsidian docs sync** (hourly cron job)
 
 Then restart your shell: `source ~/.zshrc` (or `~/.bashrc`)
 
@@ -153,6 +164,13 @@ See `claude-config/AGENTS.md` for information on creating custom skills. A templ
 ```
 dotfiles/
 ├── bootstrap.sh                # Installation script (run this!)
+├── shared/                     # Cross-tool content (single source of truth)
+│   ├── instructions/
+│   │   └── core.md             # Universal dev instructions for all tools
+│   ├── commands/
+│   │   └── plan-detailed.md    # Shared slash command (Claude + OpenCode)
+│   └── agents/
+│       └── yolo.md             # Autonomous operator agent (OpenCode)
 ├── claude-config/              # Claude Code config (symlinked to ~/.claude/)
 │   ├── settings.json           # Claude Code settings & hooks
 │   ├── statusline-custom.sh    # Custom statusline script
@@ -171,8 +189,16 @@ dotfiles/
 │   ├── AGENTS.md               # Agent-specific instructions
 │   ├── MCP-SETUP.md            # MCP gateway configuration guide
 │   └── MODEL-CONFIG.md         # Model selection and configuration
+├── opencode-config/            # OpenCode-specific overrides (if any)
+├── gemini-config/
+│   └── GEMINI.md               # Template for Gemini instructions
+├── cursor-config/
+│   └── rules/
+│       └── core-instructions.mdc  # Template for Cursor rules
 ├── zellij/
 │   └── config.kdl              # Zellij config (scrollback, keybindings)
+├── 1password/
+│   └── env.op                  # 1Password secret references
 ├── anthropic-skills/           # Submodule: Anthropic skills marketplace
 ├── .env.example                # Template for secrets
 ├── .mcp.json                   # MCP gateway entry point (git-ignored)
@@ -271,9 +297,21 @@ rm -f ~/.codex/skills/*
 rm -rf ~/code/dotfiles
 ```
 
-## Secrets
+## Secrets & API Keys
 
 Copy `.env.example` to `.env` for any API keys or secrets. The `.env` file is gitignored and will never be committed.
+
+API keys managed via 1Password (`1password/env.op`):
+
+| Key | Used By |
+|-----|---------|
+| `ANTHROPIC_API_KEY` | Claude Code, Codex |
+| `OPENAI_API_KEY` | OpenCode, Cursor (API mode) |
+| `GOOGLE_API_KEY` | Gemini CLI (API key auth) |
+| `CEREBRAS_API_KEY` | Cerebras provider |
+| `GROQ_API_KEY` | Groq provider |
+
+Load all keys: `op-env` (shell helper added by bootstrap).
 
 ## License
 

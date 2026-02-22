@@ -47,10 +47,22 @@ fi
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-notify"
 mkdir -p "$state_dir" 2>/dev/null
 
-# Clean up stale notification files (older than 1 day)
-find "$state_dir" -name 'zellij-notify-*' -mtime +1 -delete 2>/dev/null
+# Clean up stale notification files (older than 4 hours)
+find "$state_dir" -name 'zellij-notify-*' -mmin +240 -delete 2>/dev/null
 
 notify_file="$state_dir/zellij-notify-${ZELLIJ_SESSION_NAME:-default}-$ZELLIJ_PANE_ID"
+
+# If there's an existing notification for THIS pane from a DIFFERENT cwd/session,
+# clear it first (handles the "session ended, new session started" case)
+if [[ -f "$notify_file" ]]; then
+    old_title=$(cat "$notify_file" 2>/dev/null)
+    if [[ "$old_title" != "$title" ]]; then
+        # Different repo/branch — old notification is stale, clean it up
+        rm -f "$notify_file" "$notify_file.tab" 2>/dev/null
+        debug_log "cleared stale notification: was='$old_title' now='$title'"
+    fi
+fi
+
 already_notified=0
 if [[ -f "$notify_file" ]]; then
     already_notified=1

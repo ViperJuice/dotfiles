@@ -59,6 +59,17 @@ To add a new skill:
 3. Run `ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.codex/skills/my-skill`
 4. Skills are loaded automatically on next Claude/Codex session
 
+## Multi-Tool Support
+
+Skills in `~/code/dotfiles/claude-config/skills/` are shared across Claude Code and Codex.
+Commands in `~/code/dotfiles/shared/commands/` are shared across Claude Code and OpenCode.
+Agent definitions in `~/code/dotfiles/shared/agents/` are shared with OpenCode.
+
+The bootstrap script also configures:
+- **Gemini CLI**: Instructions via `~/.gemini/GEMINI.md`, MCP gateway
+- **Cursor IDE**: Rules via `~/.cursor/rules/`, MCP gateway
+- **OpenCode**: Agent roles and commands, MCP gateway
+
 ## MCP Gateway
 
 Agents have access to `mcp__gateway__*` tools for capabilities beyond the built-in toolset.
