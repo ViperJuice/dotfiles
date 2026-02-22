@@ -121,48 +121,43 @@ ensure_running() {
         debug_log "cleaned stale pid=$existing_pid"
     fi
 
-    # Start new backend with dynamic port
+    # Start new backend (port 0 = let opencode pick a free port)
     debug_log "starting new backend in $repo_dir"
 
-    # Use port 0 to let OS assign a free port
-    # Capture the output to extract the actual port
     local log_file="$repo_dir/serve.log"
-    opencode serve --port 0 > "$log_file" 2>&1 &
+    > "$log_file"
+    opencode serve > "$log_file" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$pid_file"
     debug_log "launched backend pid=$new_pid"
 
-    # Wait for port to appear in output (up to 10 seconds)
-    local port=""
-    for i in {1..20}; do
+    # Wait for "listening on http://..." in log output (up to 30 seconds)
+    local endpoint=""
+    for _ in {1..60}; do
         sleep 0.5
         # Check if process is still alive
         if ! kill -0 "$new_pid" 2>/dev/null; then
             echo "Error: backend exited unexpectedly. Check $log_file" >&2
+            cat "$log_file" >&2
             rm -f "$pid_file"
             exit 1
         fi
-        # Try to extract port from log output
-        port=$(grep -oP '(?<=:)\d{4,5}' "$log_file" 2>/dev/null | tail -1 || true)
-        if [[ -n "$port" ]]; then
-            break
-        fi
-        # Also try lsof to find the listening port
-        port=$(lsof -Pan -p "$new_pid" -iTCP -sTCP:LISTEN 2>/dev/null | \
-               grep -oP ':\K\d{4,5}' | head -1 || true)
-        if [[ -n "$port" ]]; then
+        # Parse: "opencode server listening on http://127.0.0.1:PORT"
+        endpoint=$(grep -oP 'http://[0-9.:]+' "$log_file" 2>/dev/null | tail -1 || true)
+        if [[ -n "$endpoint" ]]; then
             break
         fi
     done
 
-    if [[ -z "$port" ]]; then
-        echo "Error: could not determine backend port after 10s. Check $log_file" >&2
+    if [[ -z "$endpoint" ]]; then
+        echo "Error: could not determine backend endpoint after 30s. Check $log_file" >&2
         kill "$new_pid" 2>/dev/null || true
         rm -f "$pid_file"
         exit 1
     fi
 
-    local endpoint="http://127.0.0.1:$port"
+    local port
+    port=$(echo "$endpoint" | grep -oP ':\K\d+$')
     echo "$port" > "$port_file"
     echo "$endpoint" > "$endpoint_file"
     debug_log "backend ready pid=$new_pid port=$port endpoint=$endpoint"
@@ -229,39 +224,36 @@ main() {
             acquire_write_lock "$repo_dir"
             trap 'release_write_lock' EXIT
 
-            # Use port 0 for dynamic allocation, record results
             local log_file="$repo_dir/serve.log"
             local pid_file="$repo_dir/pid"
 
+            > "$log_file"
             opencode serve "${@:2}" > "$log_file" 2>&1 &
             local serve_pid=$!
             echo "$serve_pid" > "$pid_file"
 
-            # Wait for port
-            local port=""
-            for i in {1..20}; do
+            # Wait for "listening on http://..." in log (up to 30s)
+            local endpoint=""
+            for _ in {1..60}; do
                 sleep 0.5
                 if ! kill -0 "$serve_pid" 2>/dev/null; then
                     echo "Error: backend exited unexpectedly. Check $log_file" >&2
+                    cat "$log_file" >&2
                     rm -f "$pid_file"
                     exit 1
                 fi
-                port=$(lsof -Pan -p "$serve_pid" -iTCP -sTCP:LISTEN 2>/dev/null | \
-                       grep -oP ':\K\d{4,5}' | head -1 || true)
-                [[ -n "$port" ]] && break
+                endpoint=$(grep -oP 'http://[0-9.:]+' "$log_file" 2>/dev/null | tail -1 || true)
+                [[ -n "$endpoint" ]] && break
             done
 
-            if [[ -z "$port" ]]; then
-                # Fallback: parse log
-                port=$(grep -oP '(?<=:)\d{4,5}' "$log_file" 2>/dev/null | tail -1 || true)
-            fi
-
-            if [[ -n "$port" ]]; then
+            if [[ -n "$endpoint" ]]; then
+                local port
+                port=$(echo "$endpoint" | grep -oP ':\K\d+$')
                 echo "$port" > "$repo_dir/port"
-                echo "http://127.0.0.1:$port" > "$repo_dir/endpoint"
+                echo "$endpoint" > "$repo_dir/endpoint"
                 echo "Backend started: PID $serve_pid, port $port"
                 echo "  Repo:     $name ($repo_id)"
-                echo "  Endpoint: http://127.0.0.1:$port"
+                echo "  Endpoint: $endpoint"
 
                 # Start memory logging
                 start_memory_logging "$repo_dir" "$serve_pid" &
@@ -271,7 +263,7 @@ main() {
                 echo "  Check: $log_file"
             fi
 
-            # Wait for backend
+            # Wait for backend (foreground — Ctrl+C stops it)
             wait "$serve_pid" 2>/dev/null || true
             ;;
         run)
