@@ -670,7 +670,10 @@ fi
 
 # 1Password CLI shell integration (op plugin)
 if command -v op &>/dev/null; then
-    eval "$(op signin --account my 2>/dev/null)" || true
+    # Only attempt signin when 1Password app integration is available
+    if [ -S "$HOME/.1password/agent.sock" ]; then
+        eval "$(op signin --account my </dev/null 2>/dev/null)" || true
+    fi
     # Helper: load secrets from 1Password into env
     op-env() {
         local envfile="${1:-$DOTFILES_DIR/1password/env.op}"
