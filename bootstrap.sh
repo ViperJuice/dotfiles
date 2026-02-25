@@ -668,13 +668,14 @@ if [ -S "$HOME/.1password/agent.sock" ]; then
     export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
 fi
 
-# 1Password CLI shell integration (op plugin)
+# 1Password CLI shell integration
 if command -v op &>/dev/null; then
-    # Only attempt signin when 1Password app integration is available
+    # Desktop app: interactive signin via app integration
+    # Headless/service account: OP_SERVICE_ACCOUNT_TOKEN handles auth automatically
     if [ -S "$HOME/.1password/agent.sock" ]; then
         eval "$(op signin --account my </dev/null 2>/dev/null)" || true
     fi
-    # Helper: load secrets from 1Password into env
+    # Helper: load secrets from 1Password into env (works with both desktop app and service accounts)
     op-env() {
         local envfile="${1:-$DOTFILES_DIR/1password/env.op}"
         if [ -f "$envfile" ]; then
