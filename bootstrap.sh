@@ -668,6 +668,9 @@ if [ -S "$HOME/.1password/agent.sock" ]; then
     export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
 fi
 
+# 1Password service account (headless servers without desktop app)
+[ -f "$HOME/.config/op/service-account.env" ] && . "$HOME/.config/op/service-account.env"
+
 # 1Password CLI shell integration
 if command -v op &>/dev/null; then
     # Desktop app: interactive signin via app integration
