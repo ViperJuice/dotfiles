@@ -62,6 +62,50 @@ ensure_repo_dir() {
     echo "$repo_dir"
 }
 
+# ─── Shared auth (single auth.json across all repos) ────────────────────────
+
+link_shared_auth() {
+    local repo_dir="$1"
+    local shared_auth="$HOME/.local/share/opencode/auth.json"
+    local repo_auth="$repo_dir/data/opencode/auth.json"
+
+    # Ensure shared auth directory exists
+    mkdir -p "$(dirname "$shared_auth")" 2>/dev/null || true
+
+    # If repo has a real auth file (not a symlink), merge it into shared
+    if [[ -f "$repo_auth" && ! -L "$repo_auth" ]]; then
+        if [[ ! -f "$shared_auth" ]]; then
+            # No shared file yet — promote repo's auth directly
+            cp "$repo_auth" "$shared_auth"
+            chmod 600 "$shared_auth"
+            debug_log "promoted repo auth to shared: $repo_auth → $shared_auth"
+        else
+            # Both exist — merge provider keys (keeps all providers, newer wins per-key)
+            python3 -c "
+import json, sys
+shared = json.load(open(sys.argv[1]))
+repo = json.load(open(sys.argv[2]))
+for k, v in repo.items():
+    if k not in shared:
+        shared[k] = v
+    elif v.get('expires', 0) > shared[k].get('expires', 0):
+        shared[k] = v
+json.dump(shared, open(sys.argv[1], 'w'), indent=2)
+" "$shared_auth" "$repo_auth" 2>/dev/null && {
+                chmod 600 "$shared_auth"
+                debug_log "merged repo auth into shared: $repo_auth → $shared_auth"
+            }
+        fi
+        rm "$repo_auth"
+    fi
+
+    # Create symlink (idempotent)
+    if [[ ! -L "$repo_auth" ]]; then
+        ln -sf "$shared_auth" "$repo_auth"
+        debug_log "linked auth: $repo_auth → $shared_auth"
+    fi
+}
+
 # ─── XDG export ──────────────────────────────────────────────────────────────
 
 export_xdg() {
@@ -210,6 +254,7 @@ main() {
 
     local repo_dir
     repo_dir=$(ensure_repo_dir "$repo_id" "$worktree" "$name")
+    link_shared_auth "$repo_dir"
     export_xdg "$repo_dir"
 
     debug_log "cmd=$cmd repo=$repo_id name=$name worktree=$worktree"
@@ -217,7 +262,50 @@ main() {
     case "$cmd" in
         "")
             # No args: launch TUI
-            exec opencode
+            if [[ -n "${ZELLIJ:-}" ]]; then
+                local pane_id="${ZELLIJ_PANE_ID:-}"
+                local branch
+                branch=$(git -C "$worktree" branch --show-current 2>/dev/null) || true
+                local title="${name}${branch:+:$branch}"
+
+                # Store session root for notification scripts
+                local session_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-dotfiles/pane-session"
+                mkdir -p "$session_dir" 2>/dev/null || true
+                echo "$worktree" > "$session_dir/${pane_id:-none}" 2>/dev/null || true
+
+                # Set pane title (initial — may be overridden by exec/process detection)
+                zellij action rename-pane -p "$pane_id" "$title" 2>/dev/null || true
+
+                debug_log "zellij pane title='$title' session_root=$worktree"
+
+                # Background: re-apply title after OpenCode initializes to defeat
+                # Zellij's process-name-based title override (5 attempts over 10s)
+                (
+                    for _i in 1 2 3 4 5; do
+                        sleep 2
+                        zellij action rename-pane -p "$pane_id" "$title" 2>/dev/null || true
+                    done
+                ) &
+                local enforcer_pid=$!
+                disown "$enforcer_pid" 2>/dev/null || true
+
+                # Run as child (not exec) so bash survives for post-exit cleanup
+                local oc_rc=0
+                opencode || oc_rc=$?
+
+                # Clean up title enforcer
+                kill "$enforcer_pid" 2>/dev/null || true
+
+                # Restore pane title (branch may have changed during session)
+                branch=$(git -C "$worktree" branch --show-current 2>/dev/null) || true
+                title="${name}${branch:+:$branch}"
+                zellij action rename-pane -p "$pane_id" "$title" 2>/dev/null || true
+                debug_log "opencode exited rc=$oc_rc, restored title='$title'"
+
+                exit "$oc_rc"
+            else
+                exec opencode
+            fi
             ;;
         serve)
             # Start backend with isolation

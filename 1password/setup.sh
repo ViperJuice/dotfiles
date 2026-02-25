@@ -5,7 +5,7 @@
 
 set -e
 
-DOTFILES_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # Check if op CLI is available
 if ! command -v op &>/dev/null; then

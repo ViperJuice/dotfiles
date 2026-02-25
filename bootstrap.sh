@@ -86,6 +86,23 @@ install_deps() {
         echo "  ✓ npm"
     fi
 
+    # Zsh
+    if ! command -v zsh &>/dev/null; then
+        echo "  Installing zsh..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y zsh
+            INSTALLED+=("zsh")
+        elif command -v brew &>/dev/null; then
+            brew install zsh
+            INSTALLED+=("zsh")
+        else
+            echo "  ⚠ Cannot install zsh automatically"
+            SKIPPED+=("zsh")
+        fi
+    else
+        echo "  ✓ zsh"
+    fi
+
     # VS Code
     if ! command -v code &>/dev/null; then
         if command -v apt &>/dev/null && { [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; }; then
@@ -168,6 +185,8 @@ install_deps() {
             )
             if [[ -f "$ZELLIJ_SRC_DIR/target/release/zellij" ]]; then
                 mkdir -p "$HOME/.local/bin"
+                # Remove first to avoid "Text file busy" when zellij is running
+                rm -f "$HOME/.local/bin/zellij"
                 cp "$ZELLIJ_SRC_DIR/target/release/zellij" "$HOME/.local/bin/zellij"
                 INSTALLED+=("zellij (custom fork)")
                 echo "  ✓ Custom Zellij installed to ~/.local/bin/zellij"
@@ -301,6 +320,20 @@ authenticate_claude() {
 
 install_deps
 verify_deps
+
+# Set Zsh as default shell
+if command -v zsh &>/dev/null; then
+    ZSH_PATH=$(which zsh)
+    if [[ "$SHELL" != "$ZSH_PATH" ]]; then
+        echo "Setting Zsh as default shell..."
+        # Ensure zsh is in /etc/shells
+        if ! grep -qF "$ZSH_PATH" /etc/shells 2>/dev/null; then
+            echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+        fi
+        sudo chsh -s "$ZSH_PATH" "$USER" && CONFIGURED+=("zsh as default shell") || SKIPPED+=("zsh default (chsh failed)")
+    fi
+fi
+
 authenticate_claude
 echo ""
 
@@ -358,10 +391,13 @@ ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -sf "$DOTFILES_DIR/scripts/editor-remote.sh" ~/.claude/editor-remote.sh
 ln -sf "$DOTFILES_DIR/claude-config/gateway-guidance.yaml" ~/.claude/gateway-guidance.yaml
-# Symlink commands: shared + claude-specific
-rm -rf ~/.claude/commands 2>/dev/null
+# Symlink commands + agents: shared + claude-specific
 mkdir -p ~/.claude/commands
-for cmd in "$DOTFILES_DIR/shared/commands/"*.md "$DOTFILES_DIR/claude-config/commands/"*.md; do
+# Clear stale symlinks (preserves manually-created commands)
+for entry in ~/.claude/commands/*; do
+    [ -L "$entry" ] && rm -f "$entry"
+done
+for cmd in "$DOTFILES_DIR/shared/commands/"*.md "$DOTFILES_DIR/shared/agents/"*.md "$DOTFILES_DIR/claude-config/commands/"*.md; do
     [ -f "$cmd" ] && ln -sf "$cmd" ~/.claude/commands/
 done
 chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh ~/.claude/stacked-pane.sh
@@ -731,7 +767,8 @@ EOF
 read -r -d '' ZSH_TABTITLE << 'EOF' || true
 # Update terminal + Zellij pane title to current git repo:branch or directory name
 function precmd() {
-  local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
+  local worktree=$(git rev-parse --show-toplevel 2>/dev/null)
+  local repo=$(basename "$worktree" 2>/dev/null)
   local branch=$(git branch --show-current 2>/dev/null)
   local title
 
@@ -745,6 +782,12 @@ function precmd() {
   echo -ne "\033]0;${title}\007"
   # Also set Zellij pane title (auto-updates on branch change, cd, TUI exit)
   [[ -n "$ZELLIJ" ]] && command zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null
+  # Store session root for notification scripts (frozen when agent takes over)
+  if [[ -n "$ZELLIJ_PANE_ID" ]]; then
+    local session_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-dotfiles/pane-session"
+    [[ -d "$session_dir" ]] || mkdir -p "$session_dir" 2>/dev/null
+    echo "${worktree:-$PWD}" > "$session_dir/$ZELLIJ_PANE_ID" 2>/dev/null
+  fi
 }
 
 # Prevent Oh My Zsh from overriding the custom tab title
@@ -754,7 +797,8 @@ EOF
 read -r -d '' BASH_TABTITLE << 'EOF' || true
 # Update terminal + Zellij pane title to current git repo:branch or directory name
 set_tab_title() {
-  local repo=$(basename $(git rev-parse --show-toplevel 2>/dev/null) 2>/dev/null)
+  local worktree=$(git rev-parse --show-toplevel 2>/dev/null)
+  local repo=$(basename "$worktree" 2>/dev/null)
   local branch=$(git branch --show-current 2>/dev/null)
   local title
 
@@ -768,9 +812,18 @@ set_tab_title() {
   echo -ne "\033]0;${title}\007"
   # Also set Zellij pane title (auto-updates on branch change, cd, TUI exit)
   [[ -n "$ZELLIJ" ]] && command zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null
+  # Store session root for notification scripts (frozen when agent takes over)
+  if [[ -n "$ZELLIJ_PANE_ID" ]]; then
+    local session_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-dotfiles/pane-session"
+    [[ -d "$session_dir" ]] || mkdir -p "$session_dir" 2>/dev/null
+    echo "${worktree:-$PWD}" > "$session_dir/$ZELLIJ_PANE_ID" 2>/dev/null
+  fi
 }
 PROMPT_COMMAND="set_tab_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 EOF
+
+# Ensure shell rc files exist before adding managed blocks
+touch ~/.zshrc ~/.bashrc 2>/dev/null
 
 # Add managed blocks to shell configs
 for rc in ~/.bashrc ~/.zshrc; do
@@ -791,9 +844,10 @@ done
 # Obsidian Dev Docs Sync
 # =============================================================================
 
-# Symlink sync script
-ln -sf "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
-chmod +x ~/.claude/sync-obsidian-docs.sh
+# Symlink sync script (rm first to avoid ln -sf quirks with existing symlinks)
+rm -f ~/.claude/sync-obsidian-docs.sh
+ln -s "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
+chmod +x ~/.claude/sync-obsidian-docs.sh 2>/dev/null || true
 
 # Create obsidian vault directory if it doesn't exist
 mkdir -p ~/code/obsidian-dev-docs
@@ -808,8 +862,8 @@ else
     echo "Cron job for obsidian-docs sync already installed"
 fi
 
-# Run initial sync
-~/.claude/sync-obsidian-docs.sh
+# Run initial sync (non-fatal if script missing or obsidian vault not configured)
+~/.claude/sync-obsidian-docs.sh 2>/dev/null || echo "  ℹ Obsidian sync skipped (run manually: ~/.claude/sync-obsidian-docs.sh)"
 
 # =============================================================================
 # Summary

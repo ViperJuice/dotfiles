@@ -36,17 +36,21 @@ fi
 # Remove notification files
 rm -f "$notify_file" 2>/dev/null
 
+# Use session root (set at launch), not transient cwd
+session_root_file="${XDG_CACHE_HOME:-$HOME/.cache}/claude-dotfiles/pane-session/$ZELLIJ_PANE_ID"
+session_root=$(cat "$session_root_file" 2>/dev/null)
+session_root="${session_root:-$(pwd)}"  # fallback
+
 # Update pane title to current repo:branch (removes bell, updates branch)
-cwd=$(pwd)
-repo=$(basename "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
-branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+repo=$(basename "$(git -C "$session_root" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)
+branch=$(git -C "$session_root" branch --show-current 2>/dev/null)
 
 if [[ -n "$repo" && -n "$branch" ]]; then
     title="${repo}:${branch}"
 elif [[ -n "$repo" ]]; then
     title="$repo"
 else
-    title="${cwd##*/}"
+    title="${session_root##*/}"
 fi
 
 zellij action rename-pane -p "$ZELLIJ_PANE_ID" "$title" 2>/dev/null

@@ -34,6 +34,15 @@ Universal principles for AI-assisted coding tools.
 - Plan searches before executing — avoid repeated similar searches
 - Use the right tool for the job (file tools for files, search tools for search)
 
+## Code Search
+
+- Prefer `rg` (ripgrep) over `grep` for code search — faster, respects `.gitignore`, better regex
+- Use `rg` for file contents, `find`/glob tools for file names
+- Key flags: `--type ts` (filter by language), `-i` (case-insensitive), `-C 3` (context lines), `-l` (file paths only), `--count` (match counts)
+- Ripgrep uses Rust regex, NOT PCRE. Escape these for literal matches: `{ } ( ) [ ] . * + ? ^ $ |`
+  - Common mistake: searching for `interface{}` without escaping → use `interface\{\}`
+  - Common mistake: searching for `foo.bar()` without escaping → use `foo\.bar\(\)`
+
 ## Browser Testing
 
 - Test UI features interactively before marking them complete
