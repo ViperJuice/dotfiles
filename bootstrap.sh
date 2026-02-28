@@ -2,7 +2,8 @@
 # Bootstrap dotfiles on a new machine
 # Safe to run multiple times - uses managed blocks that get replaced on each run
 
-set -e
+# No set -e: bootstrap should be resilient and skip failures gracefully.
+# Individual sections handle their own errors via || and conditionals.
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -168,11 +169,13 @@ install_deps() {
             )
             if [[ -f "$ZELLIJ_SRC_DIR/target/release/zellij" ]]; then
                 mkdir -p "$HOME/.local/bin"
-                # Remove first to avoid "Text file busy" when zellij is running
-                rm -f "$HOME/.local/bin/zellij"
-                cp "$ZELLIJ_SRC_DIR/target/release/zellij" "$HOME/.local/bin/zellij"
-                INSTALLED+=("zellij (custom fork)")
-                echo "  ✓ Custom Zellij installed to ~/.local/bin/zellij"
+                if cp "$ZELLIJ_SRC_DIR/target/release/zellij" "$HOME/.local/bin/zellij" 2>/dev/null; then
+                    INSTALLED+=("zellij (custom fork)")
+                    echo "  ✓ Custom Zellij installed to ~/.local/bin/zellij"
+                else
+                    echo "  ⚠ Could not copy zellij (binary in use?) — skipping"
+                    SKIPPED+=("zellij (binary busy, restart zellij and re-run)")
+                fi
             else
                 echo "  ⚠ Custom Zellij build failed - check $ZELLIJ_SRC_DIR"
                 SKIPPED+=("zellij (custom build failed)")
@@ -324,8 +327,12 @@ echo ""
 # Update Git Submodules (anthropic-skills marketplace)
 # =============================================================================
 echo "Updating git submodules..."
-git -C "$DOTFILES_DIR" submodule update --init --remote
-echo "  ✓ Submodules updated"
+if git -C "$DOTFILES_DIR" submodule update --init --remote 2>&1; then
+    echo "  ✓ Submodules updated"
+else
+    echo "  ⚠ Submodule update failed (network issue?) — skipping"
+    SKIPPED+=("git submodules")
+fi
 echo ""
 
 # Helper: Add or replace a managed block in a file
@@ -834,26 +841,30 @@ done
 # Obsidian Dev Docs Sync
 # =============================================================================
 
-# Symlink sync script (rm first to avoid ln -sf quirks with existing symlinks)
-rm -f ~/.claude/sync-obsidian-docs.sh
-ln -s "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
-chmod +x ~/.claude/sync-obsidian-docs.sh 2>/dev/null || true
+# Symlink sync script
+if [ -f "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ]; then
+    ln -sf "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh" ~/.claude/sync-obsidian-docs.sh
+    chmod +x "$DOTFILES_DIR/claude-config/sync-obsidian-docs.sh"
 
-# Create obsidian vault directory if it doesn't exist
-mkdir -p ~/code/obsidian-dev-docs
+    # Create obsidian vault directory if it doesn't exist
+    mkdir -p ~/code/obsidian-dev-docs
 
-# Install cron job for hourly sync (idempotent)
-CRON_CMD="0 * * * * $HOME/.claude/sync-obsidian-docs.sh --quiet"
-if ! crontab -l 2>/dev/null | grep -qF "sync-obsidian-docs.sh"; then
-    (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
-    echo "Installed hourly cron job for obsidian-docs sync"
-    CONFIGURED+=("obsidian-docs cron")
+    # Install cron job for hourly sync (idempotent)
+    CRON_CMD="0 * * * * $HOME/.claude/sync-obsidian-docs.sh --quiet"
+    if ! crontab -l 2>/dev/null | grep -qF "sync-obsidian-docs.sh"; then
+        (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
+        echo "Installed hourly cron job for obsidian-docs sync"
+        CONFIGURED+=("obsidian-docs cron")
+    else
+        echo "Cron job for obsidian-docs sync already installed"
+    fi
+
+    # Run initial sync
+    ~/.claude/sync-obsidian-docs.sh || echo "  ⚠ Initial obsidian sync failed — will retry via cron"
 else
-    echo "Cron job for obsidian-docs sync already installed"
+    echo "  ⚠ sync-obsidian-docs.sh not found — skipping obsidian sync"
+    SKIPPED+=("obsidian-docs sync")
 fi
-
-# Run initial sync (non-fatal if script missing or obsidian vault not configured)
-~/.claude/sync-obsidian-docs.sh 2>/dev/null || echo "  ℹ Obsidian sync skipped (run manually: ~/.claude/sync-obsidian-docs.sh)"
 
 # =============================================================================
 # Summary
