@@ -608,6 +608,11 @@ SYSCTL
     fi
 fi
 
+# Kitty config
+mkdir -p ~/.config/kitty
+ln -sf "$DOTFILES_DIR/kitty/kitty.conf" ~/.config/kitty/kitty.conf
+echo "Linked Kitty config"
+
 # Zellij config
 mkdir -p ~/.config/zellij
 ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl
