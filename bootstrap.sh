@@ -382,6 +382,8 @@ ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -sf "$DOTFILES_DIR/scripts/editor-remote.sh" ~/.claude/editor-remote.sh
 ln -sf "$DOTFILES_DIR/claude-config/gateway-guidance.yaml" ~/.claude/gateway-guidance.yaml
 # Symlink commands + agents: shared + claude-specific
+# Remove if it's a symlink (previous bootstrap versions used a directory symlink)
+[ -L ~/.claude/commands ] && rm -f ~/.claude/commands
 mkdir -p ~/.claude/commands
 # Clear stale symlinks (preserves manually-created commands)
 for entry in ~/.claude/commands/*; do
