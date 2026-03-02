@@ -1,0 +1,14 @@
+Host video-server
+    HostName 192.168.1.248
+    User viperjuice
+
+Host video-server-ts
+    HostName video-server
+    User viperjuice
+
+Host claw
+    HostName 100.126.13.12
+    User viperjuice
+
+Host *
+  IdentityAgent ~/.1password/agent.sock

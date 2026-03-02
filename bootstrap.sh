@@ -691,6 +691,12 @@ if command -v op &>/dev/null; then
 fi
 EOF
 
+# SSH config
+mkdir -p ~/.ssh
+ln -sf "$DOTFILES_DIR/ssh/config" ~/.ssh/config
+chmod 600 "$DOTFILES_DIR/ssh/config"
+echo "Linked SSH config"
+
 # =============================================================================
 # 1Password Integration
 # =============================================================================
