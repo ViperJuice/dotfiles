@@ -7,6 +7,9 @@
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Ensure common bin dirs are in PATH (non-interactive SSH shells may lack them)
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
 # Track what was installed/configured for summary
 INSTALLED=()
 CONFIGURED=()
