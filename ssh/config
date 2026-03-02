@@ -1,3 +1,14 @@
+# Tailnet hosts (Tailscale MagicDNS)
+Host display
+    User viperjuice
+
+Host claw
+    User viperjuice
+
+Host leno
+    User jenne
+
+# LAN-only aliases
 Host video-server
     HostName 192.168.1.248
     User viperjuice
@@ -6,9 +17,6 @@ Host video-server-ts
     HostName video-server
     User viperjuice
 
-Host claw
-    HostName 100.126.13.12
-    User viperjuice
-
+# Global defaults
 Host *
-  IdentityAgent ~/.1password/agent.sock
+    IdentityAgent ~/.1password/agent.sock
