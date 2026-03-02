@@ -34,51 +34,14 @@ swap_tiled_layout name="vertical" {
 }
 
 swap_tiled_layout name="horizontal" {
-    // built-in behavior for 1-4 panes
+    // 1-4 panes: same as built-in (two rows)
     ui max_panes=4 {
         pane
         pane
     }
-    // extended: full-height columns for 5-12 panes
-    ui max_panes=5 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=6 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=7 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=8 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=9 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=10 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane; pane; pane; pane;
-        }
-    }
-    ui max_panes=11 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane; pane; pane; pane; pane;
-        }
-    }
+    // 5+ panes: pure full-height columns (children places all panes as vertical splits)
     ui max_panes=12 {
-        pane split_direction="vertical" {
-            pane; pane; pane; pane; pane; pane; pane; pane; pane; pane; pane; pane;
-        }
+        pane split_direction="vertical" { children; }
     }
 }
 
