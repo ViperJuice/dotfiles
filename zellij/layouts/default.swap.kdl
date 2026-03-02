@@ -1,0 +1,162 @@
+// Default swap layouts — extends built-in "horizontal" to support 5-12 panes
+// as pure full-height columns (built-in caps at 4).
+
+swap_tiled_layout name="vertical" {
+    ui max_panes=5 {
+        pane split_direction="horizontal" {
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=8 {
+        pane split_direction="horizontal" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=12 {
+        pane split_direction="horizontal" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+}
+
+swap_tiled_layout name="horizontal" {
+    ui max_panes=5 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=6 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=7 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=8 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=9 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=10 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=11 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+    ui max_panes=12 {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+}
+
+swap_tiled_layout name="stacked" {
+    ui min_panes=2 {
+        pane stacked=true {
+            pane
+            pane
+        }
+    }
+}
+
+swap_floating_layout name="floating" {
+    ui min_panes=1 {
+        floating_panes {
+            pane
+        }
+    }
+}
