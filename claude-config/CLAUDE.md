@@ -36,23 +36,23 @@ browser_console_messages()     → read console output
 
 ## MCP Gateway (PMCP)
 
-An MCP gateway is available via tools prefixed with `mcp__gateway__`. Before reaching for Bash workarounds or telling the user something isn't possible, check whether the gateway has a tool for it.
+An MCP gateway is available via tools prefixed with `mcp__pmcp__`. Before reaching for Bash workarounds or telling the user something isn't possible, check whether the gateway has a tool for it.
 
 **Plugin vs Gateway**: Playwright is available directly as `mcp__plugin_playwright_playwright__*` (preferred for browser automation). The gateway provides additional capabilities like Context7 docs lookup and on-demand server provisioning.
 
-**Discovery workflow**: `gateway_catalog_search` -> `gateway_describe` -> `gateway_invoke`
+**Discovery workflow**: `pmcp_catalog_search` -> `pmcp_describe` -> `pmcp_invoke`
 
 **Library docs (Context7)**:
-1. `gateway_invoke(tool_id="context7::resolve-library-id", arguments={"libraryName": "react"})`
-2. `gateway_invoke(tool_id="context7::get-library-docs", arguments={"context7CompatibleLibraryID": "/facebook/react", "topic": "hooks"})`
+1. `pmcp_invoke(tool_id="context7::resolve-library-id", arguments={"libraryName": "react"})`
+2. `pmcp_invoke(tool_id="context7::get-library-docs", arguments={"context7CompatibleLibraryID": "/facebook/react", "topic": "hooks"})`
 
-**Natural language discovery**: `gateway_request_capability(query="I need to search Slack messages")` — matches to installed tools or provisions new servers.
+**Natural language discovery**: `pmcp_request_capability(query="I need to search Slack messages")` — matches to installed tools or provisions new servers.
 
 **Operational tools** (for debugging hangs or checking status):
-- `gateway_health` — server status and tool counts
-- `gateway_list_pending` — in-flight requests with elapsed time
-- `gateway_cancel(request_id="server::id")` — cancel stuck request
-- `gateway_provision(server_name="...")` — install and start a new MCP server
+- `pmcp_health` — server status and tool counts
+- `pmcp_list_pending` — in-flight requests with elapsed time
+- `pmcp_cancel(request_id="server::id")` — cancel stuck request
+- `pmcp_provision(server_name="...")` — install and start a new MCP server
 
 ## Cross-Tool Instructions
 

@@ -68,7 +68,7 @@
     "security-guidance@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "context7@claude-plugins-official": false,
-    "github@claude-plugins-official": true,
+    "github@claude-plugins-official": false,
     "playwright@claude-plugins-official": true,
     "vercel@claude-plugins-official": true,
     "claude-in-chrome": false

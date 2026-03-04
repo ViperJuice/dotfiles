@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "gateway": {
-      "command": "uvx",
-      "args": ["pmcp", "-c", "~/.pmcp.json"]
+    "pmcp": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3344/sse"
     }
   }
 }

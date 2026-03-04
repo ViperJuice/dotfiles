@@ -1,5 +1,13 @@
 {
   "_WARNING": "DO NOT add a 'gateway' server here. This file is read BY the gateway — adding one creates infinite recursion and OOM crashes.",
-  "mcpServers": {},
+  "mcpServers": {
+    "browser-use": {
+      "command": "uvx",
+      "args": ["--from", "browser-use[cli]", "browser-use", "--mcp"],
+      "env": {
+        "BROWSER_USE_HEADLESS": "false"
+      }
+    }
+  },
   "disableAutoStart": ["playwright"]
 }
