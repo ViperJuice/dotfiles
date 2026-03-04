@@ -429,12 +429,75 @@ if [ -f "$DOTFILES_DIR/.pmcp.json" ]; then
     CONFIGURED+=("PMCP gateway config")
 fi
 
-# Install MCP configuration (Claude Code gateway entry point)
+# Install MCP configuration (Claude Code → PMCP via SSE)
 if [ -f "$DOTFILES_DIR/.mcp.json" ]; then
     cp "$DOTFILES_DIR/.mcp.json" ~/.mcp.json
     echo "Installed MCP configuration to ~/.mcp.json"
-    CONFIGURED+=("MCP gateway entry point")
+    CONFIGURED+=("MCP config (PMCP SSE)")
 fi
+
+# =============================================================================
+# PMCP Persistent Service
+# =============================================================================
+
+# Ensure pmcp binary is installed
+if ! command -v pmcp &>/dev/null; then
+    if command -v uv &>/dev/null; then
+        echo "Installing PMCP via uv..."
+        uv tool install pmcp && INSTALLED+=("pmcp") || SKIPPED+=("pmcp (uv install failed)")
+    elif command -v uvx &>/dev/null; then
+        echo "Installing PMCP via uv..."
+        uv tool install pmcp && INSTALLED+=("pmcp") || SKIPPED+=("pmcp (uv install failed)")
+    else
+        echo "  ⚠ Cannot install pmcp: uv not found"
+        SKIPPED+=("pmcp (no uv)")
+    fi
+else
+    echo "  ✓ pmcp"
+fi
+
+# Generate PMCP environment file
+mkdir -p ~/.config/pmcp
+if [ ! -f ~/.config/pmcp/pmcp.env ]; then
+    echo "Generating PMCP environment file..."
+    {
+        echo "API_TOKEN=$(python3 -c 'import uuid; print(uuid.uuid4())')"
+        # Add BrightData API key from 1Password if env.op is available
+        if [ -f "$DOTFILES_DIR/1password/env.op" ] && command -v op &>/dev/null; then
+            BRIGHT_KEY=$(op read "op://Development/BrightData/BRIGHTDATA_API_KEY" 2>/dev/null) || true
+            if [ -n "$BRIGHT_KEY" ]; then
+                echo "BRIGHTDATA_API_KEY=$BRIGHT_KEY"
+            fi
+        fi
+    } > ~/.config/pmcp/pmcp.env
+    chmod 600 ~/.config/pmcp/pmcp.env
+    echo "  ✓ Generated ~/.config/pmcp/pmcp.env"
+    CONFIGURED+=("PMCP environment")
+else
+    echo "  ✓ PMCP env already exists"
+fi
+
+# Install systemd user service (if systemd is available)
+if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
+    mkdir -p ~/.config/systemd/user
+    cp "$DOTFILES_DIR/claude-config/pmcp.service" ~/.config/systemd/user/pmcp.service
+    systemctl --user daemon-reload
+
+    if ! systemctl --user is-active pmcp &>/dev/null; then
+        systemctl --user enable --now pmcp
+        echo "  ✓ PMCP service started"
+    else
+        systemctl --user restart pmcp
+        echo "  ✓ PMCP service reloaded"
+    fi
+    CONFIGURED+=("PMCP systemd service")
+else
+    echo "  ⚠ systemd not available — use pmcp-service.sh for manual management"
+    SKIPPED+=("PMCP systemd service")
+fi
+
+# Symlink management script
+ln -sf "$DOTFILES_DIR/claude-config/pmcp-service.sh" ~/.claude/pmcp-service.sh
 
 # =============================================================================
 # Gemini CLI Configuration
@@ -464,11 +527,10 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     settings = {}
 
-pmcp_config = os.path.expanduser('~/.pmcp.json')
 settings['mcpServers'] = {
-    'gateway': {
-        'command': 'uvx',
-        'args': ['pmcp', '-c', pmcp_config]
+    'pmcp': {
+        'type': 'sse',
+        'url': 'http://127.0.0.1:3344/sse'
     }
 }
 settings.setdefault('general', {}).setdefault('previewFeatures', True)
@@ -499,14 +561,13 @@ if command -v cursor &>/dev/null || [ -d ~/.cursor ]; then
         cat "$DOTFILES_DIR/shared/instructions/core.md"
     } > ~/.cursor/rules/core-instructions.mdc
 
-    # Generate Cursor MCP config pointing at PMCP gateway
-    PMCP_CONFIG="$HOME/.pmcp.json"
-    cat > ~/.cursor/mcp.json << MCPEOF
+    # Generate Cursor MCP config pointing at PMCP service
+    cat > ~/.cursor/mcp.json << 'MCPEOF'
 {
   "mcpServers": {
-    "gateway": {
-      "command": "uvx",
-      "args": ["pmcp", "-c", "$PMCP_CONFIG"]
+    "pmcp": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3344/sse"
     }
   }
 }
@@ -522,7 +583,6 @@ fi
 
 if command -v opencode &>/dev/null || [ -d ~/.config/opencode ]; then
     OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
-    PMCP_CONFIG="$HOME/.pmcp.json"
 
     # Merge MCP config into existing opencode.json (preserves other settings)
     python3 -c "
@@ -537,9 +597,9 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 config['\$schema'] = 'https://opencode.ai/config.json'
 config['mcp'] = {
-    'gateway': {
-        'type': 'local',
-        'command': ['uvx', 'pmcp', '-c', os.path.expanduser('$PMCP_CONFIG')],
+    'pmcp': {
+        'type': 'sse',
+        'url': 'http://127.0.0.1:3344/sse',
         'enabled': True
     }
 }
@@ -649,8 +709,8 @@ read -r -d '' PATH_CONFIG << 'EOF' || true
 # Rust/Cargo environment
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
-# Add local bin and Claude local bin to PATH
-export PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH"
+# Add local bin, npm global bin, and Claude local bin to PATH
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.claude/local:$PATH"
 
 # Display host for remote editor wrappers (Tailscale hostname)
 export DOTFILES_DISPLAY_HOST="display"
@@ -671,13 +731,8 @@ fi
 # 1Password service account (headless servers without desktop app)
 [ -f "$HOME/.config/op/service-account.env" ] && . "$HOME/.config/op/service-account.env"
 
-# 1Password CLI shell integration
+# 1Password CLI shell integration (op signin is on-demand, not at shell start)
 if command -v op &>/dev/null; then
-    # Desktop app: interactive signin via app integration
-    # Headless/service account: OP_SERVICE_ACCOUNT_TOKEN handles auth automatically
-    if [ -S "$HOME/.1password/agent.sock" ]; then
-        eval "$(op signin --account my </dev/null 2>/dev/null)" || true
-    fi
     # Helper: load secrets from 1Password into env (works with both desktop app and service accounts)
     op-env() {
         local envfile="${1:-$DOTFILES_DIR/1password/env.op}"
