@@ -12,6 +12,10 @@ Host leno
     User jenne
 
 # LAN-only aliases
+Host macmini-lan
+    HostName 192.168.1.151
+    User viperjuice
+
 Host video-server
     HostName 192.168.1.248
     User viperjuice
