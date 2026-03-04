@@ -5,6 +5,9 @@ Host display
 Host claw
     User viperjuice
 
+Host macmini
+    User viperjuice
+
 Host leno
     User jenne
 
