@@ -660,7 +660,7 @@ except (FileNotFoundError, json.JSONDecodeError):
 config['\$schema'] = 'https://opencode.ai/config.json'
 config['mcp'] = {
     'pmcp': {
-        'type': 'sse',
+        'type': 'remote',
         'url': 'http://127.0.0.1:3344/sse',
         'enabled': True
     }
