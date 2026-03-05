@@ -392,8 +392,19 @@ mkdir -p ~/.claude/commands
 for entry in ~/.claude/commands/*; do
     [ -L "$entry" ] && rm -f "$entry"
 done
-for cmd in "$DOTFILES_DIR/shared/commands/"*.md "$DOTFILES_DIR/shared/agents/"*.md "$DOTFILES_DIR/claude-config/commands/"*.md; do
+# Clear stale assembled agents from commands/ (migrated to agents/ dir)
+for entry in ~/.claude/commands/*; do
+    [ -f "$entry" ] && ! [ -L "$entry" ] && rm -f "$entry"
+done
+for cmd in "$DOTFILES_DIR/shared/commands/"*.md "$DOTFILES_DIR/claude-config/commands/"*.md; do
     [ -f "$cmd" ] && ln -sf "$cmd" ~/.claude/commands/
+done
+
+# Subagents directory (assembled by assemble_agents from shared/agents/*/claude.json)
+mkdir -p ~/.claude/agents
+# Clear stale assembled agents (non-symlinks written by assemble_agents)
+for entry in ~/.claude/agents/*; do
+    [ -f "$entry" ] && ! [ -L "$entry" ] && rm -f "$entry"
 done
 chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh ~/.claude/stacked-pane.sh
 echo "Linked Claude config files"
@@ -408,14 +419,65 @@ for cmd in "$DOTFILES_DIR/shared/commands/"*.md "$DOTFILES_DIR/opencode-config/c
     [ -f "$cmd" ] && ln -sf "$cmd" ~/.config/opencode/commands/
 done
 
-# OpenCode: shared + opencode-specific agents
+# OpenCode: opencode-specific agents (tool-specific, not shared)
 mkdir -p ~/.config/opencode/agent
 for entry in ~/.config/opencode/agent/*; do
     [ -L "$entry" ] && rm -f "$entry"
 done
-for agent in "$DOTFILES_DIR/shared/agents/"*.md "$DOTFILES_DIR/opencode-config/agents/"*.md; do
+# Clear stale assembled agents (migrated to native JSON config)
+for entry in ~/.config/opencode/agent/*; do
+    [ -f "$entry" ] && ! [ -L "$entry" ] && rm -f "$entry"
+done
+for agent in "$DOTFILES_DIR/opencode-config/agents/"*.md; do
     [ -f "$agent" ] && ln -sf "$agent" ~/.config/opencode/agent/
 done
+
+# OpenCode: prompt files for shared agents (referenced via {file:path} in opencode.json)
+mkdir -p ~/.config/opencode/prompts
+
+# Assemble shared agents (directory-based: prompt.md + tool-specific JSON metadata)
+assemble_agents() {
+    local agents_dir="$DOTFILES_DIR/shared/agents"
+    for agent_dir in "$agents_dir"/*/; do
+        [ -d "$agent_dir" ] || continue
+        local agent_name
+        agent_name=$(basename "$agent_dir")
+        local prompt="$agent_dir/prompt.md"
+        [ -f "$prompt" ] || continue
+
+        # OpenCode: symlink prompt, agent metadata injected into opencode.json by Python block
+        if [ -f "$agent_dir/opencode.json" ]; then
+            ln -sf "$prompt" ~/.config/opencode/prompts/"$agent_name".md
+        fi
+
+        # Claude Code: claude.json → YAML front matter + prompt → ~/.claude/agents/<name>.md
+        if [ -f "$agent_dir/claude.json" ]; then
+            python3 - "$agent_dir/claude.json" <<'PYEOF' > ~/.claude/agents/"$agent_name".md
+import json, sys
+
+with open(sys.argv[1]) as f:
+    meta = json.load(f)
+
+lines = ['---']
+for key, value in meta.items():
+    if isinstance(value, bool):
+        lines.append(f'{key}: {str(value).lower()}')
+    elif isinstance(value, str) and '\n' in value:
+        lines.append(f'{key}: >-')
+        for vline in value.split('\n'):
+            lines.append(f'  {vline}')
+    else:
+        lines.append(f'{key}: {value}')
+lines.append('---')
+print('\n'.join(lines))
+PYEOF
+            echo "" >> ~/.claude/agents/"$agent_name".md
+            cat "$prompt" >> ~/.claude/agents/"$agent_name".md
+        fi
+    done
+}
+
+assemble_agents
 echo "Linked OpenCode commands and agents"
 
 # Install PMCP configuration with expanded paths
@@ -584,9 +646,9 @@ fi
 if command -v opencode &>/dev/null || [ -d ~/.config/opencode ]; then
     OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 
-    # Merge MCP config into existing opencode.json (preserves other settings)
+    # Merge MCP config + shared agent definitions into opencode.json
     python3 -c "
-import json, os
+import json, os, glob
 
 config_path = os.path.expanduser('$OPENCODE_CONFIG')
 try:
@@ -608,13 +670,24 @@ if 'opencode-gemini-auth@latest' not in plugins:
     plugins.append('opencode-gemini-auth@latest')
 config['plugin'] = plugins
 
+# Inject shared agent definitions from shared/agents/*/opencode.json
+agents_dir = os.path.join('$DOTFILES_DIR', 'shared', 'agents')
+agent_config = config.get('agent', {})
+for meta_path in sorted(glob.glob(os.path.join(agents_dir, '*', 'opencode.json'))):
+    agent_name = os.path.basename(os.path.dirname(meta_path))
+    with open(meta_path) as f:
+        meta = json.load(f)
+    meta['prompt'] = '{file:~/.config/opencode/prompts/' + agent_name + '.md}'
+    agent_config[agent_name] = meta
+config['agent'] = agent_config
+
 os.makedirs(os.path.dirname(config_path), exist_ok=True)
 with open(config_path, 'w') as f:
     json.dump(config, f, indent=2)
     f.write('\n')
 " 2>/dev/null
 
-    echo "Configured OpenCode MCP gateway"
+    echo "Configured OpenCode (MCP gateway + shared agents)"
     CONFIGURED+=("OpenCode MCP")
 fi
 

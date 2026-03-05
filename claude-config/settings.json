@@ -73,5 +73,6 @@
     "vercel@claude-plugins-official": true,
     "claude-in-chrome": false
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "effortLevel": "high"
 }
