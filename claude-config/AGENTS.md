@@ -141,7 +141,7 @@ Agents have access to `mcp__pmcp__*` tools for capabilities beyond the built-in 
 
 **Available now**:
 - **Context7** — library docs lookup (resolve library ID, then fetch docs by topic)
-- **Playwright** — browser automation (also available directly via `mcp__plugin_playwright_playwright__*`)
+- **Playwright** — browser automation (`playwright::*` tools via gateway)
 - **20+ provisionable servers** — GitHub, Slack, Notion, etc. via `pmcp_provision`
 
 **Workflow**: `pmcp_catalog_search` -> `pmcp_describe` -> `pmcp_invoke`

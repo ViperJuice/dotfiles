@@ -1,6 +1,10 @@
 {
   "_WARNING": "DO NOT add a 'gateway' server here. This file is read BY the gateway — adding one creates infinite recursion and OOM crashes.",
   "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
     "browser-use": {
       "command": "uvx",
       "args": ["--from", "browser-use[cli]", "browser-use", "--mcp"],
@@ -8,6 +12,5 @@
         "BROWSER_USE_HEADLESS": "false"
       }
     }
-  },
-  "disableAutoStart": ["playwright"]
+  }
 }

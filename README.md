@@ -120,12 +120,11 @@ When running Claude Code inside Zellij, notifications alert you when Claude need
 
 MCP (Model Context Protocol) servers provide additional tools and capabilities to Claude. Uses the **PMCP gateway** for unified server management.
 
-Available servers (auto-start):
+Available servers:
 - **playwright** - Browser automation (navigation, screenshots, clicks)
 - **context7** - Library documentation lookup
-- **filesystem** - Access files in the dotfiles repository
-
-The Context7 plugin is disabled in `settings.json` to use the gateway version instead. This keeps the context window cleaner and consolidates MCP tools through a single gateway.
+- **browser-use** - AI-driven browser automation
+- **20+ provisionable** - GitHub, Slack, Notion, etc. via `pmcp_provision`
 
 See `claude-config/MCP-SETUP.md` for configuration details.
 

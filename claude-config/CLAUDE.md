@@ -6,39 +6,17 @@ See AGENTS.md for agent-specific instructions.
 
 **CRITICAL**: Always test UI features interactively in the browser before marking them complete.
 
-Default to **Playwright plugin** tools (`mcp__plugin_playwright_playwright__*`) for all browser automation. These launch an isolated browser with no contention issues.
+Default to **Playwright** via the PMCP gateway for all browser automation. Use `pmcp_invoke` with `playwright::*` tool IDs.
 
 `claude-in-chrome` tools are only available in EZBidPro sessions (disabled globally) — use only when Chrome extension contexts are needed.
 
 For full details on tool selection, CDP connections, authenticated sessions, and infrastructure: invoke `/browser-automation`.
 
-### Quick Reference
-
-```
-browser_navigate(url)          → go to URL
-browser_snapshot()             → accessibility tree (preferred for actions)
-browser_take_screenshot()      → visual capture
-browser_click(ref, element)    → click element from snapshot
-browser_type(ref, text)        → type into element
-browser_evaluate(function)     → run JS on page
-browser_console_messages()     → read console output
-```
-
-### Testing Checklist
-
-```
-[ ] Load page and take screenshot
-[ ] Verify UI elements are visible
-[ ] Test interactive controls
-[ ] Check browser console for errors
-[ ] Verify expected behavior
-```
-
 ## MCP Gateway (PMCP)
 
 An MCP gateway is available via tools prefixed with `mcp__pmcp__`. Before reaching for Bash workarounds or telling the user something isn't possible, check whether the gateway has a tool for it.
 
-**Plugin vs Gateway**: Playwright is available directly as `mcp__plugin_playwright_playwright__*` (preferred for browser automation). The gateway provides additional capabilities like Context7 docs lookup and on-demand server provisioning.
+**Available servers**: Playwright (browser automation), Context7 (library docs), browser-use, and on-demand provisioned servers.
 
 **Discovery workflow**: `pmcp_catalog_search` -> `pmcp_describe` -> `pmcp_invoke`
 
