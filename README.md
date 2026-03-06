@@ -1,6 +1,6 @@
 # Dotfiles
 
-Personal configuration for development environment, supporting five AI coding tools from a single source of truth with Zellij terminal multiplexer integration.
+Personal configuration for development environment, supporting multiple AI coding tools from a single source of truth with Zellij terminal multiplexer integration.
 
 **Target platforms:** Ubuntu (cloud server) and WSL Ubuntu.
 
@@ -8,11 +8,15 @@ Personal configuration for development environment, supporting five AI coding to
 
 | Tool | Instructions | Commands | Agents | Skills | MCP Gateway |
 |------|:-----------:|:--------:|:------:|:------:|:-----------:|
-| Claude Code | CLAUDE.md | Shared + Claude | - | Yes | Yes |
-| Codex | Project CLAUDE.md | - | - | Yes | - |
-| OpenCode | - | Shared | Shared | - | Yes |
+| Claude Code | CLAUDE.md | Shared + Claude | Shared + Claude | Yes | Yes |
+| OpenCode | CLAUDE.md* | Shared + OpenCode | Shared + OpenCode | Yes* | Yes |
+| Antigravity | GEMINI.md | Workflows | - | Shared | Yes |
+| Codex | CLAUDE.md | - | - | Yes | - |
 | Gemini CLI | GEMINI.md | - | - | - | Yes |
 | Cursor IDE | .mdc rules | - | - | - | Yes |
+| PI | AGENTS.md | /skill:name | - | PI-specific | Planned |
+
+\* OpenCode falls back to `~/.claude/` (CLAUDE.md, skills) unless `OPENCODE_DISABLE_CLAUDE_CODE=1`
 
 ## Quick Start
 
@@ -29,7 +33,7 @@ The bootstrap script will:
 4. **Configure your shell** with aliases and tab title
 5. **Set up Zellij integration** (notifications, agent panes, background shells)
 6. **Install skills** (WSL screenshots, Anthropic skills marketplace)
-7. **Configure other tools** (OpenCode, Gemini CLI, Cursor IDE — if installed)
+7. **Configure other tools** (OpenCode, Gemini CLI, Cursor IDE, Antigravity, PI — if installed)
 8. **Set up Obsidian docs sync** (hourly cron job)
 
 Then restart your shell: `source ~/.zshrc` (or `~/.bashrc`)
@@ -159,6 +163,58 @@ See `claude-config/AGENTS.md` for information on creating custom skills. A templ
 - **Zellij** - Terminal multiplexer for pane notifications and agent transcripts
 - **pulseaudio-utils** - For native audio on Linux/WSL
 
+## Agents
+
+Agents are specialized AI assistants with custom prompts and tool configurations. Each AI coding tool has its own agent model, and this repo manages them all from a single source of truth.
+
+### Shared agents (cross-tool)
+
+Agents that work across multiple tools live in `shared/agents/<name>/`:
+
+```
+shared/agents/yolo/
+├── prompt.md          # Shared prompt body (used by all tools)
+├── claude.json        # Claude Code metadata (permissionMode, etc.)
+└── opencode.json      # OpenCode metadata (mode, tools, etc.)
+```
+
+Bootstrap deploys each to the tool's native format:
+- **Claude Code**: Assembles YAML front matter + prompt -> `~/.claude/agents/<name>.md`
+- **OpenCode**: Injects JSON metadata into `opencode.json` config, symlinks prompt via `{file:path}`
+
+### Tool-specific agents
+
+Agents for a single tool live in that tool's config directory:
+
+| Tool | Source (dotfiles) | Deployed to |
+|------|-------------------|-------------|
+| Claude Code | `claude-config/agents/*.md` | `~/.claude/agents/` (symlinked) |
+| OpenCode | `opencode-config/agents/*.md` | `~/.config/opencode/agents/` (symlinked) |
+
+### Repo-level agents (not managed by dotfiles)
+
+Per-project agents live in the project repo itself:
+
+| Tool | Location |
+|------|----------|
+| Claude Code | `<repo>/.claude/agents/<name>.md` |
+| OpenCode | `<repo>/.opencode/agents/<name>.md` or `opencode.json` |
+| PI | `<repo>/.pi/skills/` or `.pi/AGENTS.md` |
+
+### Agent model differences
+
+- **Claude Code**: Subagents are auto-delegated based on description via the Task tool. They get their own context window and can have `permissionMode: bypassPermissions`.
+- **OpenCode**: Agents have explicit modes (`primary`, `subagent`, `all`). Primary agents cycle via Tab, subagents are invoked via `@name`.
+- **Antigravity**: Uses skills (same SKILL.md format as Claude Code) and workflows.
+- **PI**: Uses skills (`/skill:name`) and TypeScript extensions. Natively reads AGENTS.md.
+
+### Creating a new agent
+
+1. **Shared**: Create `shared/agents/<name>/` with `prompt.md` + tool JSON files
+2. **Claude-only**: Create `claude-config/agents/<name>.md` with YAML front matter
+3. **OpenCode-only**: Create `opencode-config/agents/<name>.md` with YAML front matter
+4. Run `./bootstrap.sh` to deploy
+
 ## File Structure
 
 ```
@@ -170,41 +226,36 @@ dotfiles/
 │   ├── commands/
 │   │   └── plan-detailed.md    # Shared slash command (Claude + OpenCode)
 │   └── agents/
-│       └── yolo.md             # Autonomous operator agent (OpenCode)
+│       └── yolo/               # Autonomous operator agent
+│           ├── prompt.md       #   Shared prompt
+│           ├── claude.json     #   Claude Code metadata
+│           └── opencode.json   #   OpenCode metadata
 ├── claude-config/              # Claude Code config (symlinked to ~/.claude/)
 │   ├── settings.json           # Claude Code settings & hooks
-│   ├── statusline-custom.sh    # Custom statusline script
-│   ├── stacked-pane.sh         # Unified pane manager (agent + shell)
-│   ├── agent-pane.sh           # Legacy agent pane script
-│   ├── bash-pane.sh            # Legacy shell pane script
-│   ├── notify.sh               # Zellij notification script
-│   ├── notify-clear.sh         # Clears notifications on input
-│   ├── sync-obsidian-docs.sh   # Obsidian vault docs sync
-│   ├── check-zellij-pr.sh      # Monitors Zellij PR merge status
-│   ├── skills/
+│   ├── agents/                 # Claude-only agents -> ~/.claude/agents/
+│   ├── commands/               # Claude-only commands -> ~/.claude/commands/
+│   ├── skills/                 # Skills -> ~/.claude/skills/ + ~/.codex/skills/
 │   │   ├── _template/          # Template for creating new skills
 │   │   └── wsl-screenshots/    # WSL-only screenshot skill
-│   │       └── SKILL.md
 │   ├── CLAUDE.md               # Global Claude instructions
-│   ├── AGENTS.md               # Agent-specific instructions
+│   ├── AGENTS.md               # Agent architecture guide
 │   ├── MCP-SETUP.md            # MCP gateway configuration guide
 │   └── MODEL-CONFIG.md         # Model selection and configuration
-├── opencode-config/            # OpenCode-specific overrides (if any)
-├── gemini-config/
-│   └── GEMINI.md               # Template for Gemini instructions
-├── cursor-config/
-│   └── rules/
-│       └── core-instructions.mdc  # Template for Cursor rules
+├── opencode-config/            # OpenCode-specific config
+│   ├── agents/                 # OpenCode-only agents -> ~/.config/opencode/agents/
+│   └── bin/                    # Runtime tools (oc, oc-audit, etc.)
+├── antigravity-config/         # Antigravity IDE config
+│   ├── skills/                 # Antigravity-only skills -> ~/.gemini/antigravity/skills/
+│   └── workflows/              # Antigravity workflows
+├── pi-config/                  # PI coding agent config
+│   └── skills/                 # PI-only skills -> ~/.pi/agent/skills/
 ├── zellij/
 │   └── config.kdl              # Zellij config (scrollback, keybindings)
 ├── 1password/
 │   └── env.op                  # 1Password secret references
 ├── anthropic-skills/           # Submodule: Anthropic skills marketplace
-├── .env.example                # Template for secrets
-├── .mcp.json                   # MCP gateway entry point (git-ignored)
-├── .mcp.json.example           # Template for MCP gateway config
 ├── .pmcp.json                  # PMCP server configuration
-└── .gitignore                  # Ignores secrets and temp files
+└── .mcp.json                   # MCP gateway entry point
 ```
 
 ## Debug Logging

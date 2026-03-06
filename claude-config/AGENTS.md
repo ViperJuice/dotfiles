@@ -59,16 +59,81 @@ To add a new skill:
 3. Run `ln -sf ~/code/dotfiles/claude-config/skills/my-skill ~/.codex/skills/my-skill`
 4. Skills are loaded automatically on next Claude/Codex session
 
+## Agent Architecture
+
+The dotfiles repo is the single source of truth for all agent definitions. **Never edit agents in their native machine locations** (`~/.claude/agents/`, `~/.config/opencode/agents/`, etc.) — always edit in `~/code/dotfiles/` and run `./bootstrap.sh`.
+
+### Source locations
+
+| What | Source in dotfiles | Deployed to |
+|------|-------------------|-------------|
+| Shared agents | `shared/agents/<name>/` | Both Claude + OpenCode (assembled) |
+| Claude-only agents | `claude-config/agents/*.md` | `~/.claude/agents/` (symlinked) |
+| OpenCode-only agents | `opencode-config/agents/*.md` | `~/.config/opencode/agents/` (symlinked) |
+| Antigravity skills | `antigravity-config/skills/` | `~/.gemini/antigravity/skills/` (symlinked) |
+| PI skills | `pi-config/skills/` | `~/.pi/agent/skills/` (symlinked) |
+
+### Shared agents (`shared/agents/<name>/`)
+
+Each shared agent has a directory with a shared prompt and per-tool metadata:
+
+```
+shared/agents/yolo/
+├── prompt.md          # Prompt body (shared)
+├── claude.json        # Claude Code: name, description, permissionMode
+└── opencode.json      # OpenCode: description, mode (primary/subagent/all)
+```
+
+Bootstrap deploys each to the tool's native format:
+- **Claude Code**: JSON -> YAML front matter + prompt -> `~/.claude/agents/<name>.md`
+- **OpenCode**: JSON injected into `opencode.json` config, prompt symlinked via `{file:~/.config/opencode/prompts/<name>.md}`
+
+### Claude Code subagent fields
+
+```yaml
+---
+name: agent-name
+description: When to auto-delegate to this agent (with examples)
+permissionMode: bypassPermissions  # or default
+model: claude-sonnet-4-5-20250514  # optional override
+maxTurns: 50                       # optional
+tools:                             # optional allowlist
+  - Read
+  - Edit
+  - Bash
+---
+```
+
+### OpenCode agent fields
+
+```json
+{
+  "description": "When to use this agent",
+  "mode": "all",           // "primary" | "subagent" | "all"
+  "model": "...",           // optional model override
+  "temperature": 0.7,      // optional
+  "tools": {},              // optional tool allow/deny
+  "prompt": "{file:path}"  // injected by bootstrap
+}
+```
+
+### Fallback behavior
+
+- **OpenCode** reads `~/.claude/CLAUDE.md` and `~/.claude/skills/` automatically (disable with `OPENCODE_DISABLE_CLAUDE_CODE=1`)
+- **Antigravity** reads `~/.gemini/GEMINI.md` (generated from `shared/instructions/core.md`)
+- **PI** reads `~/.pi/agent/AGENTS.md` (generated from `shared/instructions/core.md`)
+- Skills in `claude-config/skills/` are shared to Claude Code, Codex, and Antigravity
+
 ## Multi-Tool Support
 
-Skills in `~/code/dotfiles/claude-config/skills/` are shared across Claude Code and Codex.
-Commands in `~/code/dotfiles/shared/commands/` are shared across Claude Code and OpenCode.
-Agent definitions in `~/code/dotfiles/shared/agents/` are shared with OpenCode.
-
-The bootstrap script also configures:
+The bootstrap script configures all tools from shared sources:
+- **Claude Code**: Settings, agents, commands, skills via `~/.claude/`
+- **OpenCode**: MCP config, shared agents, commands via `~/.config/opencode/`
+- **Antigravity**: Skills (shared from Claude) + MCP via `~/.gemini/antigravity/`
 - **Gemini CLI**: Instructions via `~/.gemini/GEMINI.md`, MCP gateway
 - **Cursor IDE**: Rules via `~/.cursor/rules/`, MCP gateway
-- **OpenCode**: Agent roles and commands, MCP gateway
+- **PI**: Instructions via `~/.pi/agent/AGENTS.md`, skills
+- **Codex**: Skills via `~/.codex/skills/`
 
 ## MCP Gateway
 
