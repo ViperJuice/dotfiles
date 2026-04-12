@@ -384,6 +384,10 @@ ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -sf "$DOTFILES_DIR/scripts/editor-remote.sh" ~/.claude/editor-remote.sh
 ln -sf "$DOTFILES_DIR/claude-config/gateway-guidance.yaml" ~/.claude/gateway-guidance.yaml
+
+# Symlink maintenance scripts to ~/.local/bin
+mkdir -p ~/.local/bin
+ln -sf "$DOTFILES_DIR/scripts/cleanup-orphaned-sessions.sh" ~/.local/bin/cleanup-orphaned-sessions.sh
 # Symlink commands + agents: shared + claude-specific
 # Remove if it's a symlink (previous bootstrap versions used a directory symlink)
 [ -L ~/.claude/commands ] && rm -f ~/.claude/commands
