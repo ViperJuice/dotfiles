@@ -9,7 +9,7 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 
 ## When to use
 
-- The input is a **multi-phase spec** (e.g., `specs/v1.md`) and the user wants to plan a specific phase.
+- The input is a **multi-phase spec** (e.g., `specs/phase-plans-v1.md`) and the user wants to plan a specific phase.
 - The work touches **more than one area** of the codebase and would benefit from parallel lane execution.
 - You need **interface contracts frozen** before lanes diverge.
 
@@ -48,15 +48,14 @@ These can be set in the shell or in `.env` at the repo root to override defaults
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PLAN_SPEC` | `specs/v1.md` | Path to the spec file (relative to repo root). Overrides the built-in default spec path. |
-| `PLAN_VERSION` | Derived from spec filename (e.g., `v1` from `specs/v1.md`) | Version string embedded in the output filename. Set this to `v2` if you have `specs/v2.md` but want the filename to say `v2` regardless of path. |
+| `PLAN_SPEC` | Auto-detected: highest-versioned `specs/phase-plans-v*.md` | Path to the spec file (relative to repo root). Overrides auto-detection entirely. |
+| `PLAN_VERSION` | Extracted from resolved spec filename (e.g., `v2` from `specs/phase-plans-v2.md`) | Version string embedded in the output filename. Override only when the filename convention can't be parsed. |
 | `PLAN_PHASE_ALIASES` | Built-in P1–P7 table above | Path to a JSON file mapping alias → full phase heading. Example: `specs/phase-aliases.json`. Use this in repos that don't follow the consiliency-portal phase structure. |
 
-Example `.env` for a repo on a new spec version:
+Example `.env` to pin a specific version instead of auto-detecting the latest:
 
 ```sh
-PLAN_SPEC=specs/v2.md
-PLAN_VERSION=v2
+PLAN_SPEC=specs/phase-plans-v1.md
 ```
 
 Examples (invocation):
@@ -74,15 +73,15 @@ The main thread is an **orchestrator only**. It briefs specialists, synthesizes 
 ### Step 1 — Resolve spec path, phase, and PHASE_ID
 
 **Spec path resolution (in order):**
-1. Check `$PLAN_SPEC` env var → if set, use it.
-2. If `<spec-path>` was explicitly passed → use it.
-3. Else look for `specs/v1.md` in the current working directory → use it.
+1. Check `$PLAN_SPEC` env var → if set, use it verbatim.
+2. If `<spec-path>` was explicitly passed as an arg → use it.
+3. Else glob `specs/phase-plans-v*.md`, parse the version numbers (`v1`, `v2`, …), and pick the **highest**. If multiple files exist (e.g., `v1.md` and `v2.md`), silently use the highest. If exactly one file found, use it.
 4. Else look for any `specs/*.md` file → if exactly one found, use it and note the assumption.
 5. Else **stop** and ask via `AskUserQuestion` which spec file to use.
 
 **Version string resolution (used in output filename):**
 1. Check `$PLAN_VERSION` env var → if set, use it.
-2. Else derive from the spec filename: strip path and extension, extract the version token (e.g., `specs/v1.md` → `v1`, `specs/roadmap-v3.md` → `v3`).
+2. Else extract the version token from the resolved spec filename by matching the pattern `v\d+` (e.g., `specs/phase-plans-v2.md` → `v2`).
 3. Else use `v1` as a safe default and note the assumption.
 
 **Phase alias table resolution (in order):**
