@@ -9,7 +9,7 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 
 ## When to use
 
-- The input is a **multi-phase spec** (e.g., `specs/*-operationalization-spec.md`) and the user wants to plan a specific phase.
+- The input is a **multi-phase spec** (e.g., `specs/v1.md`) and the user wants to plan a specific phase.
 - The work touches **more than one area** of the codebase and would benefit from parallel lane execution.
 - You need **interface contracts frozen** before lanes diverge.
 
@@ -23,15 +23,30 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 
 | Arg | Required | Meaning |
 |---|---|---|
-| `<spec-path>` | yes | Path to the spec file (relative to repo root). |
-| `<phase-name-or-id>` | yes | A phase heading or identifier present in the spec. Fuzzy match is acceptable; if ambiguous, stop and ask via `AskUserQuestion`. |
+| `<spec-path>` | **no** | Path to the spec file (relative to repo root). **Default: `specs/v1.md`** — omit this arg when working in a repo that follows the standard spec layout. |
+| `<phase-name-or-id>` | yes | A phase heading, short alias (`P1`–`P7`), or any fuzzy match. Ambiguous → stop and ask via `AskUserQuestion`. |
 | `--output <path>` | no | Override the default output path. Default: `plans/<PHASE_ID>.md`. |
 | `--consensus` | no | Enable multi-agent architectural consensus (2–3 Plan teammates with different framings). |
+
+### Phase short aliases (consiliency-portal `specs/v1.md`)
+
+| Alias | Resolves to |
+|---|---|
+| `P1` | `Phase 1 — Shared semantics, schema hardening, and signal contract` |
+| `P2` | `Phase 2 — Home, Inbox, Guide, and role-based entry` |
+| `P3` | `Phase 3 — Operations, Execution, Development, and Maintenance refinement` |
+| `P4` | `Phase 4 — Projects, Executive, Knowledge, and Decisions` |
+| `P5` | `Phase 5 — Platform governance and admin hardening` |
+| `P6` | `Phase 6 — Prompt lifecycle and AI governance` |
+| `P7` | `Phase 7 — Finance, prototype support, and assistant workflows` |
+
+These are built-in defaults. For any other repo, derive aliases from the spec's own phase headings at runtime (Step 1) and present them to the user if the short form is ambiguous.
 
 Examples:
 
 ```
-/plan-phase specs/consiliency-portal-v1-operationalization-spec.md "Phase 1 — Shared semantics, schema hardening, and signal contract"
+/plan-phase P1
+/plan-phase P3 --consensus
 /plan-phase specs/roadmap.md "Phase 3: Billing" --consensus
 ```
 
@@ -39,13 +54,23 @@ Examples:
 
 The main thread is an **orchestrator only**. It briefs specialists, synthesizes their output, enforces consensus, writes the final doc, and emits tasks. It does not `Grep`/`Read` the codebase directly — that is the Explore teammates' job. If the main thread is reaching for `Grep` or `Read` on anything other than the spec file and the plan file, that's a signal it should have delegated.
 
-### Step 1 — Load spec & resolve PHASE_ID
+### Step 1 — Resolve spec path, phase, and PHASE_ID
 
-1. `Read` the spec file.
-2. Find the heading that matches `<phase-name-or-id>`. If none matches, **stop** and use `AskUserQuestion` to let the user pick from the actual phase headings.
-3. Define `PHASE_ID`:
-   - Prefer the spec's own identifier (`Phase 1`, `P1`, `IF-0-P1`, …).
-   - Else derive from the phase name: `PHASE-<kebab>` (e.g., `PHASE-1-shared-semantics-schema-hardening-signal-contract`).
+**Spec path resolution (in order):**
+1. If `<spec-path>` was explicitly passed → use it.
+2. Else look for `specs/v1.md` in the current working directory → use it.
+3. Else look for any `specs/*.md` file → if exactly one found, use it and note the assumption.
+4. Else **stop** and ask via `AskUserQuestion` which spec file to use.
+
+**Phase resolution (in order):**
+1. If `<phase-name-or-id>` is a short alias (`P1`–`P7`) → expand via the alias table above.
+2. Else fuzzy-match against headings in the spec.
+3. If zero matches → **stop** and use `AskUserQuestion` to show the actual headings.
+4. If multiple matches → **stop** and use `AskUserQuestion` to disambiguate.
+
+**PHASE_ID:**
+- Prefer the spec's own numeric identifier (`P1`, `PHASE-1`, …).
+- Else derive from the phase name: `PHASE-<N>-<kebab-of-first-4-words>`.
 
 ### Step 2 — Parallel reconnaissance via Explore teammates
 
