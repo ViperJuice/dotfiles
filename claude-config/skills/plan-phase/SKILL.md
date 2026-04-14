@@ -25,7 +25,7 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 |---|---|---|
 | `<spec-path>` | **no** | Path to the spec file (relative to repo root). **Default: `specs/v1.md`** — omit this arg when working in a repo that follows the standard spec layout. |
 | `<phase-name-or-id>` | yes | A phase heading, short alias (`P1`–`P7`), or any fuzzy match. Ambiguous → stop and ask via `AskUserQuestion`. |
-| `--output <path>` | no | Override the default output path. Default: `plans/<PHASE_ID>.md`. |
+| `--output <path>` | no | Override the default output path. Default: `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md`. |
 | `--consensus` | no | Enable multi-agent architectural consensus (2–3 Plan teammates with different framings). |
 
 ### Phase short aliases (consiliency-portal `specs/v1.md`)
@@ -42,7 +42,24 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 
 These are built-in defaults. For any other repo, derive aliases from the spec's own phase headings at runtime (Step 1) and present them to the user if the short form is ambiguous.
 
-Examples:
+## Environment variables
+
+These can be set in the shell or in `.env` at the repo root to override defaults without touching the skill. Claude checks them in Step 1 before falling back to built-in values.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PLAN_SPEC` | `specs/v1.md` | Path to the spec file (relative to repo root). Overrides the built-in default spec path. |
+| `PLAN_VERSION` | Derived from spec filename (e.g., `v1` from `specs/v1.md`) | Version string embedded in the output filename. Set this to `v2` if you have `specs/v2.md` but want the filename to say `v2` regardless of path. |
+| `PLAN_PHASE_ALIASES` | Built-in P1–P7 table above | Path to a JSON file mapping alias → full phase heading. Example: `specs/phase-aliases.json`. Use this in repos that don't follow the consiliency-portal phase structure. |
+
+Example `.env` for a repo on a new spec version:
+
+```sh
+PLAN_SPEC=specs/v2.md
+PLAN_VERSION=v2
+```
+
+Examples (invocation):
 
 ```
 /plan-phase P1
@@ -57,20 +74,32 @@ The main thread is an **orchestrator only**. It briefs specialists, synthesizes 
 ### Step 1 — Resolve spec path, phase, and PHASE_ID
 
 **Spec path resolution (in order):**
-1. If `<spec-path>` was explicitly passed → use it.
-2. Else look for `specs/v1.md` in the current working directory → use it.
-3. Else look for any `specs/*.md` file → if exactly one found, use it and note the assumption.
-4. Else **stop** and ask via `AskUserQuestion` which spec file to use.
+1. Check `$PLAN_SPEC` env var → if set, use it.
+2. If `<spec-path>` was explicitly passed → use it.
+3. Else look for `specs/v1.md` in the current working directory → use it.
+4. Else look for any `specs/*.md` file → if exactly one found, use it and note the assumption.
+5. Else **stop** and ask via `AskUserQuestion` which spec file to use.
 
-**Phase resolution (in order):**
-1. If `<phase-name-or-id>` is a short alias (`P1`–`P7`) → expand via the alias table above.
+**Version string resolution (used in output filename):**
+1. Check `$PLAN_VERSION` env var → if set, use it.
+2. Else derive from the spec filename: strip path and extension, extract the version token (e.g., `specs/v1.md` → `v1`, `specs/roadmap-v3.md` → `v3`).
+3. Else use `v1` as a safe default and note the assumption.
+
+**Phase alias table resolution (in order):**
+1. Check `$PLAN_PHASE_ALIASES` env var → if set, `Read` that JSON file and use it as the alias map.
+2. Else use the built-in P1–P7 table.
+
+**Phase name resolution (in order):**
+1. If `<phase-name-or-id>` is a short alias (`P1`–`P7` or matches a key in the alias map) → expand.
 2. Else fuzzy-match against headings in the spec.
 3. If zero matches → **stop** and use `AskUserQuestion` to show the actual headings.
 4. If multiple matches → **stop** and use `AskUserQuestion` to disambiguate.
 
-**PHASE_ID:**
-- Prefer the spec's own numeric identifier (`P1`, `PHASE-1`, …).
-- Else derive from the phase name: `PHASE-<N>-<kebab-of-first-4-words>`.
+**PHASE_ALIAS** (used in output filename): the resolved short alias in lowercase (e.g., `p1`). If no alias exists, use `phase-<N>`.
+
+**Output path:**
+- If `--output` was passed → use it verbatim.
+- Else: `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` (e.g., `plans/phase-plan-v1-p1.md`).
 
 ### Step 2 — Parallel reconnaissance via Explore teammates
 
@@ -139,7 +168,7 @@ This makes the lane DAG visible in the user's task pane and becomes the hand-off
 
 Write the plan doc to **both**:
 
-1. `plans/<PHASE_ID>.md` in the current project.
+1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` in the current project (e.g., `plans/phase-plan-v1-p1.md`).
 2. The plan-mode scratch file path (found in the plan-mode system reminder — do **not** guess the path).
 
 ### Step 8 — ExitPlanMode
@@ -261,7 +290,7 @@ This skill is an exercise in delegation. The rules:
 
 After `ExitPlanMode` approval, the following artifacts exist:
 
-1. `plans/<PHASE_ID>.md` — committable, valid markdown, all headings present.
+1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` (e.g., `plans/phase-plan-v1-p1.md`) — committable, valid markdown, all headings present.
 2. The plan-mode scratch file — identical contents.
 3. One `TaskCreate`'d top-level task per lane, each with `test / impl / verify` children, containing `Depends on:` / `Blocks:` / `Parallel-safe:` metadata in the body.
 
