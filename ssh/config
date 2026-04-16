@@ -8,6 +8,13 @@ Host claw
 Host macmini
     User viperjuice
 
+Host ai
+    User viperjuice
+
+Host win
+    HostName 100.85.100.78
+    User viperjuice
+
 Host leno
     User jenne
 

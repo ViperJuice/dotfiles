@@ -28,8 +28,47 @@ detect_platform() {
 
 PLATFORM=$(detect_platform)
 
+# Parse args: --profile=<name>, --force-profile
+PROFILE_OVERRIDE=""
+FORCE_PROFILE=0
+for arg in "$@"; do
+    case "$arg" in
+        --profile=*)        PROFILE_OVERRIDE="${arg#*=}" ;;
+        --force-profile)    FORCE_PROFILE=1 ;;
+    esac
+done
+
+# Resolve PROFILE: CLI flag > env var > hostname registry > platform fallback
+resolve_profile() {
+    if [ -n "$PROFILE_OVERRIDE" ]; then echo "$PROFILE_OVERRIDE"; return; fi
+    if [ -n "$DOTFILES_PROFILE" ]; then echo "$DOTFILES_PROFILE"; return; fi
+    if [ -f "$DOTFILES_DIR/hosts/registry.sh" ]; then
+        # shellcheck disable=SC1091
+        source "$DOTFILES_DIR/hosts/registry.sh"
+        local p
+        p=$(resolve_profile_from_hostname)
+        if [ -n "$p" ]; then echo "$p"; return; fi
+    fi
+    case "$PLATFORM" in
+        wsl)   echo "workstation-wsl" ;;
+        mac)   echo "workstation-mac" ;;
+        linux) echo "server" ;;
+    esac
+}
+
+PROFILE=$(resolve_profile)
+
+# Refuse to bootstrap appliance hosts unless explicitly forced
+if [ "$PROFILE" = "appliance" ]; then
+    echo "ERROR: this host is registered as 'appliance' (single-purpose: prod app server, NVR, etc.)."
+    echo "Bootstrapping the full dev config here is not recommended."
+    echo "If you really mean it, re-run with: ./bootstrap.sh --profile=server --force-profile"
+    exit 1
+fi
+
 echo "Installing dotfiles from $DOTFILES_DIR..."
 echo "Detected platform: $PLATFORM"
+echo "Detected profile:  $PROFILE"
 echo ""
 
 # =============================================================================
@@ -374,6 +413,23 @@ mkdir -p ~/.claude
 
 # Symlink Claude config files (ln -sf to files is safe)
 ln -sf "$DOTFILES_DIR/claude-config/settings.json" ~/.claude/settings.json
+
+# Per-host profile overlay → ~/.claude/settings.local.json (CC merges over base).
+# Copy (don't symlink) so hand-edits on the host survive future bootstraps.
+# --force-profile re-stamps; otherwise we leave any existing local file alone.
+profile_overlay="$DOTFILES_DIR/hosts/$PROFILE/settings.json"
+if [ -f "$profile_overlay" ]; then
+    if [ ! -f ~/.claude/settings.local.json ] || [ "$FORCE_PROFILE" = "1" ]; then
+        cp "$profile_overlay" ~/.claude/settings.local.json
+        echo "Installed profile overlay: $PROFILE → ~/.claude/settings.local.json"
+        CONFIGURED+=("claude profile=$PROFILE")
+    else
+        echo "Skipping profile overlay (settings.local.json exists; pass --force-profile to overwrite)"
+    fi
+else
+    echo "  ⚠ No overlay at $profile_overlay — base settings.json only"
+fi
+
 ln -sf "$DOTFILES_DIR/claude-config/statusline-custom.sh" ~/.claude/statusline-custom.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify-clear.sh" ~/.claude/notify-clear.sh
