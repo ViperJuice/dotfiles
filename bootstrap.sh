@@ -415,17 +415,37 @@ mkdir -p ~/.claude
 ln -sf "$DOTFILES_DIR/claude-config/settings.json" ~/.claude/settings.json
 
 # Per-host profile overlay → ~/.claude/settings.local.json (CC merges over base).
-# Copy (don't symlink) so hand-edits on the host survive future bootstraps.
-# --force-profile re-stamps; otherwise we leave any existing local file alone.
+# We deep-merge the profile into any existing settings.local.json so user-set
+# keys win over profile defaults (preserves per-host customizations like
+# permissions.allow, MCP server lists, model overrides).
+# --force-profile replaces the file entirely with the profile overlay.
 profile_overlay="$DOTFILES_DIR/hosts/$PROFILE/settings.json"
 if [ -f "$profile_overlay" ]; then
-    if [ ! -f ~/.claude/settings.local.json ] || [ "$FORCE_PROFILE" = "1" ]; then
+    if [ "$FORCE_PROFILE" = "1" ] || [ ! -f ~/.claude/settings.local.json ]; then
         cp "$profile_overlay" ~/.claude/settings.local.json
         echo "Installed profile overlay: $PROFILE → ~/.claude/settings.local.json"
-        CONFIGURED+=("claude profile=$PROFILE")
     else
-        echo "Skipping profile overlay (settings.local.json exists; pass --force-profile to overwrite)"
+        # Deep-merge: existing user keys win, profile fills in missing keys
+        python3 - "$profile_overlay" ~/.claude/settings.local.json <<'PYEOF'
+import json, sys
+overlay = json.load(open(sys.argv[1]))
+existing = json.load(open(sys.argv[2]))
+
+def merge(profile, user):
+    # user wins; profile fills in missing keys recursively
+    if isinstance(profile, dict) and isinstance(user, dict):
+        out = dict(profile)
+        for k, v in user.items():
+            out[k] = merge(profile.get(k), v) if k in profile else v
+        return out
+    return user
+
+merged = merge(overlay, existing)
+json.dump(merged, open(sys.argv[2], "w"), indent=2)
+PYEOF
+        echo "Merged profile overlay: $PROFILE into existing ~/.claude/settings.local.json"
     fi
+    CONFIGURED+=("claude profile=$PROFILE")
 else
     echo "  ⚠ No overlay at $profile_overlay — base settings.json only"
 fi
