@@ -1,20 +1,23 @@
 #!/bin/bash
 # Editor remote wrapper — seamless cursor/code across SSH
 # Detects if running in SSH session on headless machine and opens
-# editor on the display machine using the --remote flag (IPC socket).
-#
-# On desktop (has $DISPLAY): passes through to the real binary
-# On SSH remote: SSHs back to display machine and runs
-#   $editor --remote ssh-remote+hostname /path
+# editor on the display machine via --folder-uri with vscode-remote:// URI.
 #
 # Requires:
 #   - Bidirectional SSH via Tailscale
 #   - DOTFILES_DISPLAY_HOST env var (default: "display")
+#   - xxd (from vim-common) for hex encoding
 
 _editor_open_remote() {
     local editor="$1"
     shift
     local args=("$@")
+
+    # Inside a Cursor/VS Code integrated terminal: use native IPC
+    if [ -n "$VSCODE_IPC_HOOK_CLI" ]; then
+        command "$editor" "${args[@]}"
+        return
+    fi
 
     # On desktop: pass through to real binary
     if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
@@ -28,7 +31,7 @@ _editor_open_remote() {
         return
     fi
 
-    # SSH remote → resolve path, hostname, SSH back to display
+    # SSH remote → build vscode-remote URI → open on display machine
     local target="${args[0]:-.}"
     [[ "$target" == "." ]] && target="$(pwd)"
     [[ "$target" != /* ]] && target="$(cd "$target" 2>/dev/null && pwd)"
@@ -40,9 +43,17 @@ _editor_open_remote() {
 
     local display_host="${DOTFILES_DISPLAY_HOST:-display}"
 
-    # Use --remote flag (IPC socket, no DISPLAY needed)
+    # Build vscode-remote URI with hex-encoded JSON hostname
+    local hex_host
+    hex_host=$(printf '{"hostName":"%s"}' "$remote_host" | xxd -p | tr -d '\n')
+    local uri="vscode-remote://ssh-remote+${hex_host}${target}"
+
+    # SSH to display, detect XAUTHORITY dynamically, open with --folder-uri
     if ssh -o ConnectTimeout=3 -o BatchMode=yes "$display_host" \
-        "DISPLAY=:0 $editor --remote ssh-remote+${remote_host} '${target}'" 2>/dev/null; then
+        "export DISPLAY=:0; \
+         export XAUTHORITY=\$(pgrep -a Xwayland | grep -o '/run/user/[0-9]*/\.mutter-Xwaylandauth\.[A-Za-z0-9]*'); \
+         ELECTRON_RUN_AS_NODE=1 /usr/share/cursor/cursor /usr/share/cursor/resources/app/out/cli.js \
+         --folder-uri '${uri}' --reuse-window" 2>/dev/null; then
         echo "Opened ${editor} on ${display_host} → ${remote_host}:${target}"
     else
         echo "Could not reach ${display_host}. Falling back to tunnel..."

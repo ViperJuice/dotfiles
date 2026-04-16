@@ -225,6 +225,9 @@ SL-2 — <lane name>
 
 ## Execution Notes
 - <Parallelism caveats, sequencing gotchas, lanes that can't be worktree-isolated (shared migrations, shared generated files), etc.>
+- **Single-writer files**: <files that multiple lanes might want to touch but only one is allowed to modify — e.g., barrel index files, generated types, nav config, worker router. List the owner lane for each.>
+- **Known destructive changes**: <any deletions a lane legitimately performs, named by file path. If empty, write "none — every lane is purely additive." This is the whitelist execute-phase's pre-merge check uses to distinguish legitimate deletions from stale-base accidents.>
+- **Stale-base guidance** (copy verbatim): Lane teammates working in isolated worktrees do not see sibling-lane merges automatically. If a lane finds its worktree base is pre-<first upstream dependency's merge>, it MUST stop and report rather than committing — the orchestrator will re-spawn or rebase. Silent `git reset --hard` or `git checkout HEAD~N -- …` in a stale worktree produces commits that destroy peer-lane work on `--no-ff` merge.
 - (If `--consensus` was used) **Architectural choices**: <consensus summary, or unresolved disagreement with dissent recorded>
 
 ## Acceptance Criteria
@@ -273,6 +276,8 @@ Before writing the plan doc, verify:
 - [ ] **Every `impl` task has a preceding `test` task** in the same lane.
 - [ ] **Every acceptance criterion is a testable assertion**, not prose. "Users can log in" is not testable; "`POST /api/auth` returns 200 with a valid session cookie for a registered user" is.
 - [ ] **Interface freeze gates are concrete** — name the symbol/endpoint/migration, not a vibe.
+- [ ] **Stale-base resilience** — for each lane that isn't at the root of the DAG, list under `Interfaces consumed` every upstream symbol, migration number, or file path it reads. This gives `execute-phase` the evidence list to verify the lane's base wasn't stale, and narrows the blast radius of a mis-based commit (Execution Notes should call out "if lane teammate finds its worktree base is pre-<upstream-SL>, stop and report — do not rebase silently"). P6 lost three lanes to stale-base destructive commits that weren't caught until pre-merge diff.
+- [ ] **Cross-lane file deletions called out** — if any lane legitimately deletes a file that another lane produces (rare but real: a lane that replaces a stub), record it in Execution Notes under a "Known destructive changes" block. `execute-phase` uses this to distinguish legitimate deletions from stale-base accidents during its Step-7 destructiveness check.
 
 ## Teamwork & delegation posture
 

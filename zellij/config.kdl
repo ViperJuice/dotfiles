@@ -1,6 +1,6 @@
 scrollback_lines 50000
 default_layout "default"
-auto_layout false
+auto_layout true
 
 // Use OSC 52 to copy to local clipboard over SSH
 copy_clipboard "system"

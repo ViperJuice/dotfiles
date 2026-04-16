@@ -1,0 +1,16 @@
+layout {
+    pane {
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+        }
+        pane split_direction="vertical" {
+            pane
+            pane
+            pane
+            pane
+        }
+    }
+}

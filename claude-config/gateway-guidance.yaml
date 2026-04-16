@@ -1,9 +1,9 @@
 guidance:
   level: "minimal"
-  custom_instructions: |
-    Workflow: pmcp_catalog_search -> pmcp_describe -> pmcp_invoke.
-    For docs lookup, use Context7 (resolve library ID first, then get docs).
-    Need a capability not listed? Use pmcp_request_capability or pmcp_provision.
+  # Uncomment and edit custom_instructions to override the default L0 handshake text:
+  # custom_instructions: |
+  #   Workflow: catalog_search → describe → invoke.
+  #   Add your own trigger patterns and guidance here.
   layers:
     mcp_instructions: true
     code_hints: true

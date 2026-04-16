@@ -1,0 +1,157 @@
+#!/bin/bash
+# oc-reaper — Detect and kill orphaned opencode serve processes
+#
+# An orphan is defined by BOTH:
+#   - PPID = 1 (parent died, reparented to init)
+#   - Zero established TCP connections (no TUI client)
+#
+# Usage:
+#   oc-reaper              Kill orphaned serve processes
+#   oc-reaper --dry-run    Preview what would be killed
+#   oc-reaper --quiet      No output unless orphans found (for cron)
+
+set -euo pipefail
+
+REGISTRY_DIR="$HOME/.opencode/repos"
+MIN_AGE_MIN="${OC_REAPER_MIN_AGE:-30}"  # minutes
+DRY_RUN=0
+QUIET=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        --quiet)   QUIET=1 ;;
+    esac
+done
+
+# ─── Debug logging ───────────────────────────────────────────────────────────
+LOG_DIR="${HOME}/.cache/claude-dotfiles/logs"
+debug_log() {
+    if [[ -n "${CLAUDE_DOTFILES_DEBUG:-}" ]]; then
+        mkdir -p "$LOG_DIR" 2>/dev/null
+        echo "[$(date)] [oc-reaper] $*" >> "$LOG_DIR/opencode.log"
+    fi
+}
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+get_ppid() {
+    local pid="$1"
+    ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' '
+}
+
+get_rss_kb() {
+    local pid="$1"
+    ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '
+}
+
+get_elapsed_min() {
+    local pid="$1"
+    local etimes
+    etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ') || return 1
+    echo $(( etimes / 60 ))
+}
+
+has_tcp_connections() {
+    local pid="$1"
+    # Check for ESTABLISHED TCP connections via /proc or ss
+    if [[ -d "/proc/$pid/fd" ]]; then
+        ss -tnp 2>/dev/null | grep -q "pid=$pid," && return 0
+    fi
+    return 1
+}
+
+# ─── Find orphans ────────────────────────────────────────────────────────────
+
+orphan_pids=()
+orphan_info=()
+total_rss_kb=0
+
+while IFS= read -r line; do
+    pid=$(echo "$line" | awk '{print $1}')
+    [[ -z "$pid" ]] && continue
+
+    # Check PPID = 1 (reparented to init)
+    ppid=$(get_ppid "$pid")
+    [[ "$ppid" != "1" ]] && continue
+
+    # Check age gate
+    age_min=$(get_elapsed_min "$pid") || continue
+    [[ "$age_min" -lt "$MIN_AGE_MIN" ]] && continue
+
+    # Check zero TCP connections
+    if has_tcp_connections "$pid"; then
+        debug_log "skip pid=$pid: has active TCP connections"
+        continue
+    fi
+
+    rss_kb=$(get_rss_kb "$pid")
+    rss_mb=$(( rss_kb / 1024 ))
+    cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || echo "unknown")
+
+    orphan_pids+=("$pid")
+    orphan_info+=("PID=$pid  RSS=${rss_mb}MB  age=${age_min}min  cwd=$cwd")
+    total_rss_kb=$(( total_rss_kb + rss_kb ))
+done < <(pgrep -af 'opencode serve' 2>/dev/null || true)
+
+# ─── Report / Act ────────────────────────────────────────────────────────────
+
+if [[ ${#orphan_pids[@]} -eq 0 ]]; then
+    [[ "$QUIET" -eq 0 ]] && echo "No orphaned opencode serve processes found."
+    debug_log "no orphans found"
+    exit 0
+fi
+
+total_rss_mb=$(( total_rss_kb / 1024 ))
+echo "Found ${#orphan_pids[@]} orphaned opencode serve process(es) (~${total_rss_mb}MB total):"
+for info in "${orphan_info[@]}"; do
+    echo "  $info"
+done
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo ""
+    echo "[dry-run] Would kill ${#orphan_pids[@]} process(es) and free ~${total_rss_mb}MB"
+    exit 0
+fi
+
+# Kill orphans: SIGTERM first, wait, then SIGKILL
+echo ""
+for pid in "${orphan_pids[@]}"; do
+    echo -n "  Killing PID $pid (SIGTERM)..."
+    kill "$pid" 2>/dev/null || true
+
+    # Wait up to 5 seconds for graceful exit
+    waited=0
+    while kill -0 "$pid" 2>/dev/null && [[ "$waited" -lt 10 ]]; do
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        echo -n " SIGKILL..."
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    echo " done"
+    debug_log "killed orphan pid=$pid"
+done
+
+# ─── Clean stale registry files ──────────────────────────────────────────────
+
+if [[ -d "$REGISTRY_DIR" ]]; then
+    cleaned=0
+    for repo_dir in "$REGISTRY_DIR"/*/; do
+        [[ -d "$repo_dir" ]] || continue
+        pid_file="$repo_dir/pid"
+        [[ -f "$pid_file" ]] || continue
+        recorded_pid=$(cat "$pid_file")
+        if ! kill -0 "$recorded_pid" 2>/dev/null; then
+            rm -f "$pid_file" "$repo_dir/port" "$repo_dir/endpoint"
+            cleaned=$((cleaned + 1))
+            debug_log "cleaned stale registry for pid=$recorded_pid in $(basename "$repo_dir")"
+        fi
+    done
+    [[ "$cleaned" -gt 0 ]] && echo "Cleaned $cleaned stale registry entry(ies)"
+fi
+
+echo ""
+echo "Reaped ${#orphan_pids[@]} orphan(s), freed ~${total_rss_mb}MB"
