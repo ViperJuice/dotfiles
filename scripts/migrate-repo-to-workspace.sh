@@ -62,8 +62,16 @@ fi
 
 mkdir -p /mnt/workspace/code
 
+# Warn if SRC has nested mounts (sshfs, bind, NFS) — -x skips them but caller should know
+nested_mounts=$(mount | awk -v src="$SRC/" '$3 ~ "^"src {print "  " $3}' | head)
+if [ -n "$nested_mounts" ]; then
+    echo "NOTE: nested mount(s) inside $SRC will be skipped (rsync -x):"
+    echo "$nested_mounts"
+    echo "Re-mount them manually at the new bind-mount location if needed."
+fi
+
 echo "=== Copy $SRC -> $DST ==="
-rsync -a --delete --info=stats1 "$SRC/" "$DST/"
+rsync -ax --delete --info=stats1 "$SRC/" "$DST/"
 
 echo "=== Verify (rsync dry-run should show no diffs) ==="
 # grep -c returns 1 when no matches; pipe to || true so set -o pipefail doesn't kill us on the success path
