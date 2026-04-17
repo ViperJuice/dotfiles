@@ -6,12 +6,12 @@ Universal principles for AI-assisted coding tools.
 
 **Our pipelines use `git worktree` almost exclusively.** When creating worktrees:
 
-- **If `/mnt/scratch` exists** (e.g. on claw), put every worktree under `/mnt/scratch/worktrees/<project>-<branch>`. Never create worktrees next to the repo on root disk — it's small and fills fast.
+- **If `/mnt/workspace` exists** (e.g. on claw), put every worktree under `/mnt/workspace/worktrees/<project>-<branch>`. Never create worktrees next to the repo on root disk — it's small and fills fast.
 - **Otherwise** (display, ai, macmini, win-wsl), default git conventions apply — siblings of the repo are fine.
 
-Build caches on scratch-enabled hosts are already redirected transparently (`CARGO_TARGET_DIR`, symlinks for pnpm/npm/uv/cargo registry); you do not need to manage those. Normal `cargo build`, `pnpm install`, `uv sync`, etc. work unchanged in any worktree.
+Build caches on workspace-enabled hosts are already redirected transparently (`CARGO_TARGET_DIR`, symlinks for pnpm/npm/uv/cargo registry); you do not need to manage those. Normal `cargo build`, `pnpm install`, `uv sync`, etc. work unchanged in any worktree.
 
-One-liner to probe: `[ -d /mnt/scratch ] && echo "use /mnt/scratch/worktrees" || echo "use default worktree location"`.
+One-liner to probe: `[ -d /mnt/workspace ] && echo "use /mnt/workspace/worktrees" || echo "use default worktree location"`.
 
 ## Code Quality
 

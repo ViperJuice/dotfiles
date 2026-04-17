@@ -10,12 +10,12 @@ DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Ensure common bin dirs are in PATH (non-interactive SSH shells may lack them)
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
-# On scratch-enabled hosts, route cargo builds to the shared target dir so
+# On workspace-enabled hosts, route cargo builds to the shared target dir so
 # bootstrap-triggered builds (e.g., zellij fork) don't fill root disk.
 # Mirrors the shell-rc export for non-interactive runs.
-if [ -d /mnt/scratch ]; then
-    mkdir -p /mnt/scratch/cargo-target
-    export CARGO_TARGET_DIR=/mnt/scratch/cargo-target
+if [ -d /mnt/workspace ]; then
+    mkdir -p /mnt/workspace/cargo-target
+    export CARGO_TARGET_DIR=/mnt/workspace/cargo-target
 fi
 
 # Track what was installed/configured for summary

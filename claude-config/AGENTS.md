@@ -2,17 +2,17 @@
 
 See `~/.claude/skills/` and `~/.codex/skills/` for available skills.
 
-## Scratch volume (when `/mnt/scratch` exists)
+## Workspace volume (when `/mnt/workspace` exists)
 
-**Our pipelines use git worktrees almost exclusively.** On any host where `/mnt/scratch` exists, worktrees and other heavy/temporary work MUST go there, not on the root disk.
+**Our pipelines use git worktrees almost exclusively.** On any host where `/mnt/workspace` exists, worktrees and other heavy/temporary work MUST go there, not on the root disk.
 
-**Rules — always follow when `/mnt/scratch` exists:**
+**Rules — always follow when `/mnt/workspace` exists:**
 
-- **Worktrees** — create as `git worktree add /mnt/scratch/worktrees/<project>-<branch> <branch>`. Never create worktrees next to the repo (`../repo-branch`) — root disk is small, scratch is 500G+. This applies to every worktree you create, including transient ones for parallel pipelines.
-- **Large temporary data** — model downloads, datasets, build artifacts over ~1G. Route them into `/mnt/scratch/` subdirs rather than `$HOME` or `/tmp`.
-- **Build caches (transparent)** — you do NOT need to manage these yourself. `CARGO_TARGET_DIR`, `~/.npm`, `~/.cache/uv`, `~/.cache/pnpm`, `~/.local/share/pnpm`, `~/.cargo/registry` already redirect onto scratch via env var and symlinks. Normal `cargo build`, `pnpm install`, `uv sync`, `npm install` work unchanged.
+- **Worktrees** — create as `git worktree add /mnt/workspace/worktrees/<project>-<branch> <branch>`. Never create worktrees next to the repo (`../repo-branch`) — root disk is small, workspace is 500G+. This applies to every worktree you create, including transient ones for parallel pipelines.
+- **Large temporary data** — model downloads, datasets, build artifacts over ~1G. Route them into `/mnt/workspace/` subdirs rather than `$HOME` or `/tmp`.
+- **Build caches (transparent)** — you do NOT need to manage these yourself. `CARGO_TARGET_DIR`, `~/.npm`, `~/.cache/uv`, `~/.cache/pnpm`, `~/.local/share/pnpm`, `~/.cargo/registry` already redirect onto the workspace volume via env var and symlinks. Normal `cargo build`, `pnpm install`, `uv sync`, `npm install` work unchanged.
 
-**How to check:** `[ -d /mnt/scratch ]`. If it doesn't exist (display, ai, macmini, win-wsl), treat this section as inapplicable and use the repo-local conventions.
+**How to check:** `[ -d /mnt/workspace ]`. If it doesn't exist (display, ai, macmini, win-wsl), treat this section as inapplicable and use the repo-local conventions.
 
 ## Creating Custom Skills
 
