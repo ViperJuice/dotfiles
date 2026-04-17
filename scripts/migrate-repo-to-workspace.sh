@@ -53,7 +53,8 @@ echo "=== Copy $SRC -> $DST ==="
 rsync -a --delete --info=stats1 "$SRC/" "$DST/"
 
 echo "=== Verify (rsync dry-run should show no diffs) ==="
-diff_lines=$(rsync -an --delete --itemize-changes "$SRC/" "$DST/" | grep -cE '^[>c<*]')
+# grep -c returns 1 when no matches; pipe to || true so set -o pipefail doesn't kill us on the success path
+diff_lines=$(rsync -an --delete --itemize-changes "$SRC/" "$DST/" | grep -cE '^[>c<*]' || true)
 if [ "$diff_lines" -ne 0 ]; then
     echo "ERROR: rsync verify found $diff_lines differences. Aborting before swap."
     echo "Leaving $DST in place for inspection; $SRC untouched."
