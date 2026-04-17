@@ -1,10 +1,16 @@
 #!/bin/bash
-# Move a repo from ~/code/<name> to /mnt/workspace/code/<name>, replacing the
-# original with a symlink. Idempotent-ish — refuses to run if the source is
-# already a symlink or if something has open file handles in the tree.
+# Move a repo from ~/code/<name> to /mnt/workspace/code/<name> and bind-mount
+# the workspace location back at the original path. Using a bind mount (not a
+# symlink) preserves getcwd() / process.cwd() so Claude Code / Codex / opencode
+# session histories keyed on ~/code/<name> continue to resolve.
+#
+# Side effects:
+#   - copies SRC -> /mnt/workspace/code/<name>
+#   - stashes original as SRC.PRE-MIGRATE-<timestamp>
+#   - mkdirs an empty SRC and `sudo mount --bind` the workspace location there
+#   - appends an fstab entry (bind, nofail, x-systemd.requires-mounts-for)
 #
 # Usage:  migrate-repo-to-workspace.sh <repo-name> [--force]
-# Example: migrate-repo-to-workspace.sh onto-attentive-retrieval
 
 set -euo pipefail
 
@@ -19,6 +25,7 @@ DST="/mnt/workspace/code/$REPO_NAME"
 [ -d "/mnt/workspace" ] || { echo "ERROR: /mnt/workspace not mounted"; exit 1; }
 [ -e "$SRC" ] || { echo "ERROR: $SRC does not exist"; exit 1; }
 [ -L "$SRC" ] && { echo "ERROR: $SRC is already a symlink"; exit 1; }
+mountpoint -q "$SRC" && { echo "ERROR: $SRC is already a mount point"; exit 1; }
 
 # --- Safety: refuse if processes have files open under $SRC ---
 if [ "$FORCE" -eq 0 ]; then
@@ -67,17 +74,27 @@ if [ "$diff_lines" -ne 0 ]; then
     exit 1
 fi
 
-echo "=== Swap original for symlink ==="
+echo "=== Swap original for bind mount ==="
 STASH="${SRC}.PRE-MIGRATE-$(date +%s)"
 mv "$SRC" "$STASH"
-ln -s "$DST" "$SRC"
+mkdir "$SRC"
+sudo mount --bind "$DST" "$SRC"
+
+echo "=== Persist via /etc/fstab (idempotent) ==="
+FSTAB_LINE="$DST  $SRC  none  bind,nofail,x-systemd.requires-mounts-for=/mnt/HC_Volume_105438154  0  0"
+if ! grep -qF "$DST  $SRC" /etc/fstab; then
+    echo "$FSTAB_LINE" | sudo tee -a /etc/fstab >/dev/null
+    echo "  added fstab entry"
+else
+    echo "  fstab entry already present"
+fi
 
 echo ""
 echo "Done. New layout:"
-ls -la "$SRC"
+mount | grep " on $SRC " || echo "(mount not visible?)"
 echo ""
 echo "Rollback, if needed (kept for safety):"
-echo "  rm '$SRC' && mv '$STASH' '$SRC' && rm -rf '$DST'"
+echo "  sudo umount '$SRC' && sudo sed -i '\\|$DST  $SRC|d' /etc/fstab && rmdir '$SRC' && mv '$STASH' '$SRC' && rm -rf '$DST'"
 echo ""
-echo "Once confirmed healthy (days later):"
+echo "Once confirmed healthy (usually minutes is enough — bind mount is low-risk):"
 echo "  rm -rf '$STASH'"
