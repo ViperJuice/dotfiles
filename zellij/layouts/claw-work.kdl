@@ -1,0 +1,34 @@
+// Claw main workspace — 6 panes, each running `claude -c` in a project dir.
+// Launch with: zellij --session work --layout claw-work attach -c
+layout {
+    tab name="work" focus=true {
+        pane split_direction="vertical" {
+            pane name="consiliency" cwd="/home/viperjuice/code/consiliency-portal" {
+                command "claude"
+                args "-c"
+            }
+            pane name="governed-pipeline" cwd="/home/viperjuice/code/governed-pipeline" {
+                command "claude"
+                args "-c"
+            }
+            pane name="book-vetting" cwd="/home/viperjuice/code/Book-Vetting" {
+                command "claude"
+                args "-c"
+            }
+            pane name="onto-attentive" cwd="/home/viperjuice/code/onto-attentive-retrieval" {
+                command "claude"
+                args "-c"
+            }
+            pane name="regenesis-1" cwd="/home/viperjuice/code/regenesis-monorepo" {
+                command "claude"
+                args "-c"
+            }
+            pane name="regenesis-2" cwd="/home/viperjuice/code/regenesis-monorepo" {
+                command "claude"
+                args "-c"
+            }
+        }
+    }
+    pane size=1 borderless=true { plugin location="tab-bar"; }
+    pane size=2 borderless=true { plugin location="status-bar"; }
+}
