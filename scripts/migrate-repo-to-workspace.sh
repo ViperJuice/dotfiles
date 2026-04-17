@@ -41,8 +41,14 @@ if [ -d "$SRC/.git" ]; then
         echo "NOTE: $SRC has $dirty uncommitted change(s). Migration is still safe"
         echo "(rsync preserves everything), but you should be aware."
         if [ "$FORCE" -eq 0 ]; then
-            read -p "Continue? (y/N) " ans
-            [[ "${ans:-n}" =~ ^[Yy] ]] || exit 1
+            if [ -t 0 ]; then
+                read -p "Continue? (y/N) " ans
+                [[ "${ans:-n}" =~ ^[Yy] ]] || exit 1
+            else
+                echo "ERROR: uncommitted changes and stdin is not a TTY — refusing to prompt."
+                echo "Re-run with --force to migrate anyway (rsync preserves the dirty state)."
+                exit 1
+            fi
         fi
     fi
 fi
