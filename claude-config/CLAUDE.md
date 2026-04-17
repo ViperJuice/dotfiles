@@ -2,6 +2,10 @@
 
 See AGENTS.md for agent-specific instructions.
 
+## Git worktrees — location rule (read first)
+
+**Our pipelines use `git worktree` almost exclusively.** If `/mnt/scratch` exists on the current host (e.g., claw), create every worktree under `/mnt/scratch/worktrees/<project>-<branch>` — NEVER next to the repo on root. On hosts without `/mnt/scratch`, use repo siblings as usual. Build caches (cargo/pnpm/npm/uv) already redirect transparently — no special handling needed. See `AGENTS.md` → "Scratch volume" for full rules.
+
 ## Interactive Testing Workflow
 
 **CRITICAL**: Always test UI features interactively in the browser before marking them complete.
