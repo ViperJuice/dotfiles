@@ -576,11 +576,11 @@ if [ -f "$DOTFILES_DIR/.pmcp.json" ]; then
     CONFIGURED+=("PMCP gateway config")
 fi
 
-# Install MCP configuration (Claude Code → PMCP via SSE)
+# Install MCP configuration (Claude Code → PMCP via streamable-http)
 if [ -f "$DOTFILES_DIR/.mcp.json" ]; then
     cp "$DOTFILES_DIR/.mcp.json" ~/.mcp.json
     echo "Installed MCP configuration to ~/.mcp.json"
-    CONFIGURED+=("MCP config (PMCP SSE)")
+    CONFIGURED+=("MCP config (PMCP http)")
 fi
 
 # =============================================================================
@@ -638,6 +638,20 @@ if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
         echo "  ✓ PMCP service reloaded"
     fi
     CONFIGURED+=("PMCP systemd service")
+elif [[ "$PLATFORM" == "mac" ]]; then
+    # Install launchd user agent on macOS
+    PLIST_SRC="$DOTFILES_DIR/hosts/workstation-mac/com.user.pmcp.plist"
+    PLIST_DST="$HOME/Library/LaunchAgents/com.user.pmcp.plist"
+    if [ -f "$PLIST_SRC" ]; then
+        mkdir -p ~/Library/LaunchAgents ~/.pmcp/logs
+        sed "s|\\\$HOME|$HOME|g" "$PLIST_SRC" > "$PLIST_DST"
+        launchctl bootout "gui/$(id -u)/com.user.pmcp" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
+        echo "  ✓ PMCP launchd agent loaded"
+        CONFIGURED+=("PMCP launchd agent")
+    else
+        SKIPPED+=("PMCP launchd agent (plist missing)")
+    fi
 else
     echo "  ⚠ systemd not available — use pmcp-service.sh for manual management"
     SKIPPED+=("PMCP systemd service")
@@ -676,8 +690,8 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 settings['mcpServers'] = {
     'pmcp': {
-        'type': 'sse',
-        'url': 'http://127.0.0.1:3344/sse'
+        'type': 'http',
+        'url': 'http://127.0.0.1:3344/mcp'
     }
 }
 settings.setdefault('general', {}).setdefault('previewFeatures', True)
@@ -713,8 +727,8 @@ if command -v cursor &>/dev/null || [ -d ~/.cursor ]; then
 {
   "mcpServers": {
     "pmcp": {
-      "type": "sse",
-      "url": "http://127.0.0.1:3344/sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3344/mcp"
     }
   }
 }
@@ -751,8 +765,8 @@ if command -v antigravity &>/dev/null || [ -d ~/.gemini/antigravity ]; then
 {
   "mcpServers": {
     "pmcp": {
-      "type": "sse",
-      "url": "http://127.0.0.1:3344/sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3344/mcp"
     }
   }
 }
