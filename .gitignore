@@ -31,3 +31,7 @@ Thumbs.db
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Skill close-out artifacts (per-skill, generated each run)
+claude-config/skills/*/reflections/
+claude-config/skills/*/handoff.md
