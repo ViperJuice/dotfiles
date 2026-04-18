@@ -66,6 +66,14 @@ Examples (invocation):
 /plan-phase specs/roadmap.md "Phase 3: Billing" --consensus
 ```
 
+## Deferred tool preloading
+
+The tools this skill uses for task emission and user clarification are deferred in the current harness and must be registered via `ToolSearch` before first call. Load them at the top of Step 1 in a single query so Step 6's per-lane `TaskCreate` and any Step 1/3 `AskUserQuestion` don't pay a round-trip:
+
+```
+ToolSearch(query: "select:TaskCreate,AskUserQuestion,ExitPlanMode")
+```
+
 ## Workflow (delegation-first)
 
 The main thread is an **orchestrator only**. It briefs specialists, synthesizes their output, enforces consensus, writes the final doc, and emits tasks. It does not `Grep`/`Read` the codebase directly — that is the Explore teammates' job. If the main thread is reaching for `Grep` or `Read` on anything other than the spec file and the plan file, that's a signal it should have delegated.
@@ -169,6 +177,12 @@ Write the plan doc to **both**:
 
 1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` in the current project (e.g., `plans/phase-plan-v1-p1.md`).
 2. The plan-mode scratch file path (found in the plan-mode system reminder — do **not** guess the path).
+
+After writing, run:
+```
+python scripts/validate_plan_doc.py plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md
+```
+Fix any errors before calling `ExitPlanMode`. The validator checks required headings, disjoint file ownership, DAG acyclicity, and that every acceptance criterion is a testable assertion.
 
 ### Step 8 — ExitPlanMode
 
@@ -278,6 +292,7 @@ Before writing the plan doc, verify:
 - [ ] **Interface freeze gates are concrete** — name the symbol/endpoint/migration, not a vibe.
 - [ ] **Stale-base resilience** — for each lane that isn't at the root of the DAG, list under `Interfaces consumed` every upstream symbol, migration number, or file path it reads. This gives `execute-phase` the evidence list to verify the lane's base wasn't stale, and narrows the blast radius of a mis-based commit (Execution Notes should call out "if lane teammate finds its worktree base is pre-<upstream-SL>, stop and report — do not rebase silently"). P6 lost three lanes to stale-base destructive commits that weren't caught until pre-merge diff.
 - [ ] **Cross-lane file deletions called out** — if any lane legitimately deletes a file that another lane produces (rare but real: a lane that replaces a stub), record it in Execution Notes under a "Known destructive changes" block. `execute-phase` uses this to distinguish legitimate deletions from stale-base accidents during its Step-7 destructiveness check.
+- [ ] **Plan doc passes `validate_plan_doc.py`** — run `python scripts/validate_plan_doc.py <plan-doc-path>` and confirm zero errors before calling `ExitPlanMode`. Do not skip even when the changes look obviously correct; the validator catches structural issues (missing headings, duplicate lane IDs, malformed task tables) that manual review misses.
 
 ## Teamwork & delegation posture
 
@@ -287,8 +302,10 @@ This skill is an exercise in delegation. The rules:
 - **Parallel-by-default.** Step 2 (Explore) and Step 3a (consensus Plan) MUST be issued as a single message with multiple `Agent` tool calls. Sequential spawning is a bug.
 - **Name every teammate.** Set `name:` on every `Agent` call so you can re-address via `SendMessage` without losing the teammate's context or paying to restart.
 - **Task list as source of truth for the lane DAG.** Step 6's per-lane `TaskCreate` is how the plan becomes actionable. Each lane task is addressable by ID for the future `execute-phase` skill.
-- **Hand-off to `execute-phase` (deferred skill).** That skill is expected to read the plan doc + task list, then use `TeamCreate` (experimental `AGENT_TEAMS` teammates) to spawn one named teammate per lane, each running inside its own `Agent(isolation: "worktree")`. Lanes merge to main only after their lane-local verify task passes and the interface freeze gates for that lane's consumers are green.
-- **Manual hand-off until then.** Execute a lane by spawning `Agent(isolation: "worktree", name: "<SL-ID>", subagent_type: "general-purpose")` and pasting that lane's section of the plan doc as the brief.
+- **Hand-off to `execute-phase`.** After `ExitPlanMode` approval, invoke `/execute-phase <plan-doc-path>`. That skill reads the plan doc + task list, validates the doc with `validate_plan_doc.py`, then registers a team (`TeamCreate`) and spawns one `Agent(team_name=…, name="lane-<sl-id>", subagent_type="general-purpose")` per lane. Each teammate's brief includes a mandatory `EnterWorktree` first step so its filesystem work lands in an isolated worktree branch (`worktree-<teammate-name>` by default); the orchestrator resolves that branch via the teammate's reply-envelope `commit_sha` and merges with `--no-ff`. Lanes merge to main only after their lane-local verify task passes and every interface freeze gate for that lane's consumers is green. **Do NOT pass `isolation: "worktree"` alongside `team_name`** — the harness silently runs the teammate in-process and drops the isolation kwarg, producing zero worktrees and relying on LLM file-ownership discipline alone.
+- **Manual hand-off (when `execute-phase` is unavailable).** Run `python scripts/validate_plan_doc.py <plan-doc-path>` first — fix any reported errors before proceeding. Then execute each lane in one of two ways:
+  - (a) **Standalone** — `Agent(isolation: "worktree", name: "<SL-ID>", subagent_type: "general-purpose")` **without** `team_name`. The `isolation` kwarg is honored in this form; loses team coordination (SendMessage-based retry, shared tasklist).
+  - (b) **Teamed** — `TeamCreate` + `Agent(team_name=…, name="<SL-ID>", subagent_type="general-purpose")`, and the teammate's first tool call is `EnterWorktree` (load via `ToolSearch(query="select:EnterWorktree")` if not already in its registry). Worktree via tool, team coordination preserved.
 
 ## Output contract
 
