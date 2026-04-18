@@ -288,13 +288,53 @@ After all lanes merged:
 2. Run every assertion under `## Acceptance Criteria` that can be mechanically checked.
 3. **Team teardown**. Try `TeamDelete` first. If it blocks (in-process teammates ignore `shutdown_request`), fall back to filesystem cleanup: `bash scripts/team_teardown.sh phase-<alias>` (rm on `~/.claude/teams/<team>/` + `~/.claude/tasks/<team>/`).
 4. **Kill leftover background processes**. Run `ps aux | grep -E "next dev|node.*dev"` and `kill` any stragglers spawned by lane teammates.
-5. Emit final summary:
+5. **Clean-tree verification**. Run `git status`. After successful completion the tree must be clean (lane merges are the only changes, and they're committed). Allowlist: `.claude/worktrees/`, `.claude/execute-phase-state.json`. Anything else → stop and surface.
+6. Emit final summary:
    - Lanes merged (with merge-commit SHAs)
    - Gates closed
    - Final verification pass/fail
    - Total wall-clock duration
    - Per-lane breakdown: model used, duration, token spend, retry count
-6. Mark the phase's parent TaskCreate (if one exists) as completed.
+7. Mark the phase's parent TaskCreate (if one exists) as completed.
+
+**Halt exception**: on Step 8 second-failure halt, `.claude/execute-phase-state.json` persists for `--resume`. This is the documented dirty-tree exception; no commit required.
+
+### Step 9.5 — Close-out: Reflection
+
+After final summary, spawn a reflection agent using the `frontier` tier (see Model tiers table above):
+
+```
+Agent(
+  subagent_type: "general-purpose",
+  model: "<frontier-model-id>",
+  name: "execute-phase-reflection",
+  prompt: """
+    Review the skill at <absolute-path-to-execute-phase/SKILL.md> and the
+    current execution transcript.
+
+    Produce REPO-AGNOSTIC feedback on the skill itself. Do not reference
+    this specific project, codebase, file names, or domain — reflect only
+    on how the skill's instructions performed.
+
+    Output:
+    # execute-phase reflection — <ISO timestamp>
+
+    ## What worked
+    - <bullet>
+
+    ## Improvements to SKILL.md
+    - <specific, actionable change to the instructions>
+  """
+)
+```
+
+Write the reply to the path emitted by:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/.claude/skills/_shared/next_reflection_path.py" execute-phase
+```
+
+Surface to the user: "Reflection saved to <path>."
 
 ## Lane state machine
 

@@ -182,6 +182,51 @@ The output file must match `references/roadmap-template.md` structurally. `plan-
 
 After approval, invoke `/plan-phase <ALIAS>` per phase. Phases with no shared ancestor in the DAG can be planned and executed in parallel — note which ones in the hand-off message. The wall-clock critical path is the longest DAG path through the roadmap.
 
+## Close-out — Commit artifact (clean-tree guarantee)
+
+After `ExitPlanMode` is approved, before exiting:
+
+1. `git add specs/phase-plans-v<N>.md` (and the `_reviews.md` sibling if `--review-external` produced one).
+2. `git commit -m "chore(roadmap): <create|append phases>"`.
+3. Run `git status`. If dirty outside the skill's own artifacts, surface via `AskUserQuestion` with `[commit the remaining changes as chore, stash, abort]`.
+
+## Close-out — Reflection
+
+After artifacts are committed, spawn a reflection agent using the `frontier` tier (resolve via `execute-phase` Model tiers table):
+
+```
+Agent(
+  subagent_type: "general-purpose",
+  model: "<frontier-model-id>",
+  name: "phase-roadmap-builder-reflection",
+  prompt: """
+    Review the skill at <absolute-path-to-phase-roadmap-builder/SKILL.md>
+    and the current execution transcript.
+
+    Produce REPO-AGNOSTIC feedback on the skill itself. Do not reference
+    this specific project, codebase, file names, or domain — reflect only
+    on how the skill's instructions performed.
+
+    Output:
+    # phase-roadmap-builder reflection — <ISO timestamp>
+
+    ## What worked
+    - <bullet>
+
+    ## Improvements to SKILL.md
+    - <specific, actionable change to the instructions>
+  """
+)
+```
+
+Write the reply to the path emitted by:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/.claude/skills/_shared/next_reflection_path.py" phase-roadmap-builder
+```
+
+Surface to the user: "Reflection saved to <path>."
+
 ## Reference files
 
 - `references/roadmap-template.md` — exact structural skeleton to emit.

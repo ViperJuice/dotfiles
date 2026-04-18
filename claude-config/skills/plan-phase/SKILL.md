@@ -315,3 +315,50 @@ After `ExitPlanMode` approval, three artifacts exist:
 3. One `TaskCreate`'d top-level task per lane, each with `test / impl / verify` children, containing `Depends on:` / `Blocks:` / `Parallel-safe:` metadata in the body.
 
 Those three are the full hand-off surface — everything downstream (manual lane execution or `execute-phase`) reads from them.
+
+## Close-out — Commit artifact (clean-tree guarantee)
+
+After `ExitPlanMode` is approved, before exiting:
+
+1. `git add plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` (and the `_reviews.md` sibling if `--review-external` produced one).
+2. `git commit -m "chore(plan): <PHASE_ID> lane plan"`.
+3. Run `git status`. If dirty outside the skill's own artifacts, surface via `AskUserQuestion` with `[commit the remaining changes as chore, stash, abort]`.
+
+`execute-phase`'s preflight will reject a dirty tree on its next invocation; this step exists to prevent that.
+
+## Close-out — Reflection
+
+After artifacts are committed, spawn a reflection agent using the `frontier` tier (resolve via `execute-phase` Model tiers table):
+
+```
+Agent(
+  subagent_type: "general-purpose",
+  model: "<frontier-model-id>",
+  name: "plan-phase-reflection",
+  prompt: """
+    Review the skill at <absolute-path-to-plan-phase/SKILL.md> and the
+    current execution transcript.
+
+    Produce REPO-AGNOSTIC feedback on the skill itself. Do not reference
+    this specific project, codebase, file names, or domain — reflect only
+    on how the skill's instructions performed.
+
+    Output:
+    # plan-phase reflection — <ISO timestamp>
+
+    ## What worked
+    - <bullet>
+
+    ## Improvements to SKILL.md
+    - <specific, actionable change to the instructions>
+  """
+)
+```
+
+Write the reply to the path emitted by:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/.claude/skills/_shared/next_reflection_path.py" plan-phase
+```
+
+Surface to the user: "Reflection saved to <path>."
