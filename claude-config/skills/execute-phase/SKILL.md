@@ -19,6 +19,16 @@ Follow-on executor for `/plan-phase`. Consumes the plan doc + TaskCreate'd lane 
 - You want human checkpoints between lanes → execute lanes manually (`Agent(isolation: "worktree", name: "<SL-ID>")` with the lane's section pasted in).
 - The plan doc's DAG has cycles or a lane's owned files overlap another lane's → fix the plan first.
 
+## Model tiers (edit on Anthropic releases)
+
+Model IDs appear only in this table. All model-routing logic in the workflow references the tier name.
+
+| Tier      | Model              | Use for                                                       |
+|-----------|--------------------|---------------------------------------------------------------|
+| frontier  | claude-opus-4-7    | retry escalation ceiling, highest-stakes lanes                |
+| strong    | claude-sonnet-4-6  | contract-authoring (IF-freeze), schema/migration, algorithmic |
+| fast      | claude-haiku-4-5   | mechanical wiring, small components against frozen types      |
+
 ## Inputs
 
 | Arg | Required | Meaning |
@@ -97,19 +107,21 @@ Each lane gets a model and thinking level matched to its complexity. The assignm
 
 Apply in order, first match wins:
 
-1. Lane has `Execution hint: <model>/<thinking>` inside its `### SL-N` section → use it verbatim.
-2. Lane publishes any `IF-0-*` gate (contract-authoring) → `claude-sonnet-4-6` / high. Downstream lanes depend on the symbols being correct.
-3. Lane scope mentions migrations, schema, or SQL → `claude-sonnet-4-6` / high. Bad migrations are expensive to unwind.
-4. Lane scope mentions algorithmic/computed logic AND has tests as first task → `claude-sonnet-4-6` / medium.
-5. Lane owns >10 files AND publishes no interfaces (wiring / mechanical refactor) → `claude-haiku-4-5` / low.
-6. Lane implements small components against already-frozen types → `claude-haiku-4-5` / low.
-7. Default fallback → `claude-sonnet-4-6` / medium.
+1. Lane has `Execution hint: <tier>/<thinking>` inside its `### SL-N` section → use it verbatim.
+2. Lane publishes any `IF-0-*` gate (contract-authoring) → `strong` / high. Downstream lanes depend on the symbols being correct.
+3. Lane scope mentions migrations, schema, or SQL → `strong` / high. Bad migrations are expensive to unwind.
+4. Lane scope mentions algorithmic/computed logic AND has tests as first task → `strong` / medium.
+5. Lane owns >10 files AND publishes no interfaces (wiring / mechanical refactor) → `fast` / low.
+6. Lane implements small components against already-frozen types → `fast` / low.
+7. Default fallback → `strong` / medium.
+
+Resolve tier → model from the Model tiers table at the top of this skill and pass the concrete model ID to `Agent(model: …)`.
 
 **Retry escalation** (after a lane's first failure):
 
-- `claude-haiku-4-5` → `claude-sonnet-4-6`
-- `claude-sonnet-4-6` → `claude-opus-4-6`
-- `claude-opus-4-6` → stay at `claude-opus-4-6`
+- `fast` → `strong`
+- `strong` → `frontier`
+- `frontier` → stay at `frontier`
 - Thinking level bumps up one tier (`low → medium → high`).
 
 `Agent` does not expose a direct thinking-level parameter — convey it in the brief's framing (e.g., "Think carefully before editing shared type definitions" vs "These are mechanical edits; move quickly").
@@ -298,15 +310,17 @@ pending ──► running ──► verify-ok ──► merged
 
 ## Model selection quick-reference
 
-| Symptom in the plan doc | Assigned model | Thinking |
+| Symptom in the plan doc | Assigned tier | Thinking |
 |---|---|---|
-| `Scope` mentions schema / migration / SQL | `claude-sonnet-4-6` | high |
-| `Interfaces provided` includes any `IF-0-*` gate | `claude-sonnet-4-6` | high |
-| `Scope` mentions algorithm / compute / worker logic | `claude-sonnet-4-6` | medium |
-| `Owned files` glob expands to >10 files, no interfaces provided | `claude-haiku-4-5` | low |
-| `Scope` is "small components against frozen types" | `claude-haiku-4-5` | low |
+| `Scope` mentions schema / migration / SQL | `strong` | high |
+| `Interfaces provided` includes any `IF-0-*` gate | `strong` | high |
+| `Scope` mentions algorithm / compute / worker logic | `strong` | medium |
+| `Owned files` glob expands to >10 files, no interfaces provided | `fast` | low |
+| `Scope` is "small components against frozen types" | `fast` | low |
 | `Execution hint:` line is present in lane section | Use it verbatim | Use it verbatim |
 | Retry | One tier up | One tier up |
+
+Resolve tier names to model IDs via the Model tiers table at the top of this skill.
 
 ## Output contract
 
