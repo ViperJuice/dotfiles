@@ -31,9 +31,11 @@
 #       above. Orchestrator should surface to the teammate for manual
 #       resolution.
 #
-# Rationale: Step 7's MANDATORY pre-merge check. P6 lost 3 of 10 lanes to
-# stale-base destructive commits. Extracting the 3-part diff into a script
-# makes the verdict deterministic across phases.
+# Rationale: Step 7's MANDATORY pre-merge check. A lane that committed
+# against a stale base can wipe peer-lane work on `--no-ff` merge; the
+# naive `git diff main..lane` can't distinguish that from a parallel-
+# branch false positive. Extracting the 3-part diff (naive + ancestor +
+# whitelist) into a script makes the verdict deterministic.
 
 set -uo pipefail
 

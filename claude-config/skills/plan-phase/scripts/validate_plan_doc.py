@@ -220,14 +220,25 @@ _CODE_TOKEN_RE = re.compile(r"`([^`]+)`")
 
 def _split_inline_items(raw: str) -> List[str]:
     """Extract items from an inline list. Prefer backtick-quoted tokens; else
-    fall back to comma-splitting. Normalizes '(none)' to []."""
+    fall back to comma-splitting. Normalizes '(none)' to [].
+
+    Propagates an inline '(pre-existing)' annotation onto EVERY extracted
+    token so downstream checks (e.g., _check_f_interfaces_trace) can see
+    the annotation even when the user wrote it outside the backticks,
+    e.g. ``- **Interfaces consumed**: `IPlugin` (pre-existing)``.
+    """
     s = raw.strip()
     if not s or s.lower() in {"(none)", "none", "—"}:
         return []
+    has_pre_existing = "(pre-existing)" in s.lower()
     tokens = _CODE_TOKEN_RE.findall(s)
     if tokens:
-        return [t.strip() for t in tokens if t.strip()]
-    return [tok.strip().strip("`") for tok in re.split(r",\s*", s) if tok.strip()]
+        items = [t.strip() for t in tokens if t.strip()]
+    else:
+        items = [tok.strip().strip("`") for tok in re.split(r",\s*", s) if tok.strip()]
+    if has_pre_existing:
+        items = [f"{t} (pre-existing)" for t in items]
+    return items
 
 
 def _parse_task_table(body: str) -> List[dict]:
@@ -433,24 +444,108 @@ def _check_e_test_before_impl(lane_sections: Dict[str, dict]) -> Findings:
     return out
 
 
-def _check_f_interfaces_trace(lane_sections: Dict[str, dict]) -> Findings:
+def _check_f_interfaces_trace(
+    lane_sections: Dict[str, dict],
+    lane_sections_raw: Optional[Dict[str, str]] = None,
+) -> Findings:
     out: Findings = []
     provided: Set[str] = set()
     for parsed in lane_sections.values():
         for sym in parsed["interfaces_provided"]:
             provided.add(_normalize_interface(sym))
     for sl_id, parsed in lane_sections.items():
+        # Fall back to raw body scan when the token's annotation was
+        # separated from it during parsing (e.g. ``backtick`` (pre-existing)).
+        raw_body = (lane_sections_raw or {}).get(sl_id, "")
         for sym in parsed["interfaces_consumed"]:
             norm = _normalize_interface(sym)
             if not norm:
                 continue
             if "pre-existing" in sym.lower():
                 continue
+            # Raw-body fallback: the token itself appears with a (pre-existing)
+            # annotation somewhere in the lane body (maybe on a different line).
+            if raw_body:
+                pattern = rf"`?{re.escape(norm)}`?\s*\(pre-existing\)"
+                if re.search(pattern, raw_body, re.IGNORECASE):
+                    continue
             if norm not in provided:
                 out.append(
                     f"(F) WARN: {sl_id} consumes `{sym}` but no upstream lane provides it "
                     f"(mark '(pre-existing)' if it exists outside P-this-phase)"
                 )
+    return out
+
+
+def _check_g_grep_paired_with_tests(src: str) -> Findings:
+    """Every acceptance criterion that uses `rg`/`grep` as its sole assertion
+    must cite a test file in the same bullet. A bare grep is defeatable by
+    renaming a symbol to pass the regex — pair it with a behavioral test."""
+    out: Findings = []
+    body = _extract_section(src, "Acceptance Criteria")
+    if not body:
+        return out
+    # Iterate top-level bullets. A bullet is a line starting with "- [ ]" or "- [x]".
+    # Multi-line bullets continue until the next top-level bullet or blank line.
+    lines = body.splitlines()
+    current: List[str] = []
+    bullets: List[str] = []
+    for line in lines:
+        if line.lstrip().startswith("- ["):
+            if current:
+                bullets.append("\n".join(current))
+            current = [line]
+        elif current:
+            if not line.strip():
+                bullets.append("\n".join(current))
+                current = []
+            else:
+                current.append(line)
+    if current:
+        bullets.append("\n".join(current))
+    for bullet in bullets:
+        low = bullet.lower()
+        has_grep = (
+            re.search(r"\brg\s+-?\w*\b", bullet) is not None
+            or re.search(r"\bgrep\s+-?\w*\b", bullet) is not None
+        )
+        if not has_grep:
+            continue
+        # Cite a test file if anything in the bullet looks like a test path:
+        # `tests/` or `test_` or a `.py` with a test-ish stem.
+        cites_test = (
+            "tests/" in low
+            or re.search(r"\btest_\w+\.py\b", low) is not None
+            or re.search(r"\.py\b", low) is not None
+            and ("test" in low or "pytest" in low)
+        )
+        if not cites_test:
+            first_line = bullet.strip().splitlines()[0][:90]
+            out.append(
+                f"(G) WARN: acceptance criterion uses grep/rg without citing a paired test "
+                f"file — rename-defeat risk: {first_line!r}"
+            )
+    return out
+
+
+def _check_h_eager_reexport(src: str) -> Findings:
+    """If Execution Notes says SL-0 adds re-exports to a __init__.py, require
+    the doc to also specify the __getattr__ lazy pattern. Eager top-level
+    re-exports break package load when a later lane drops or renames the
+    exported symbol."""
+    out: Findings = []
+    body = _extract_section(src, "Execution Notes")
+    if not body:
+        return out
+    low = body.lower()
+    mentions_reexport = ("re-export" in low) or ("reexport" in low)
+    mentions_init_py = "__init__.py" in low
+    if mentions_reexport and mentions_init_py and "__getattr__" not in low:
+        out.append(
+            "(H) WARN: Execution Notes mentions re-exports in __init__.py but does not "
+            "specify the `__getattr__` lazy pattern — eager top-level imports break "
+            "package load when a later lane drops or renames the exported symbol"
+        )
     return out
 
 
@@ -517,7 +612,9 @@ def main(argv: List[str]) -> int:
 
     findings.extend(_check_d_owned_files_disjoint(lane_sections_parsed, repo_root))
     findings.extend(_check_e_test_before_impl(lane_sections_parsed))
-    findings.extend(_check_f_interfaces_trace(lane_sections_parsed))
+    findings.extend(_check_f_interfaces_trace(lane_sections_parsed, lane_sections_raw))
+    findings.extend(_check_g_grep_paired_with_tests(src))
+    findings.extend(_check_h_eager_reexport(src))
 
     # Partition findings into errors vs warnings.
     errors = [f for f in findings if "WARN" not in f]

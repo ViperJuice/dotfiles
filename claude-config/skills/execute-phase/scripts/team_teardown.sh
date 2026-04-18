@@ -9,11 +9,10 @@
 #   - Idempotent (no-op if dirs don't exist).
 #   - Never fails (exit 0 always).
 #
-# Rationale (SKILL Lesson #5): "In-process teammates ignore shutdown_request.
-# TeamDelete blocks on active members. If a teammate is backendType:
-# 'in-process' and not acking shutdown, `rm -rf ~/.claude/teams/<team>` +
-# `rm -rf ~/.claude/tasks/<team>` is the accepted tear-down path after the
-# phase has verified green." The orchestrator should call TeamDelete first;
+# Rationale: in-process teammates ignore `shutdown_request`, so `TeamDelete`
+# blocks on active members. After the phase has verified green, removing
+# the team directory and its task directory on the filesystem is the
+# accepted tear-down path. The orchestrator should call TeamDelete first;
 # fall back to this script when TeamDelete fails on active members.
 
 set -uo pipefail

@@ -5,13 +5,13 @@ description: "Architecture-first planning for a spec phase. Produces an interfac
 
 # plan-phase
 
-Architecture-first planner for a single phase of a multi-phase specification. Produces a plan document containing interface freezes, swim lanes with disjoint file ownership, a lane DAG, per-lane task lists (test → impl → verify), and testable acceptance criteria. Designed to be run in **plan mode** and handed off to a future `execute-phase` skill (or manual per-lane worktree agents) for parallel execution.
+Architecture-first planner for a single phase of a multi-phase specification. Produces a plan document containing interface freezes, swim lanes with disjoint file ownership, a lane DAG, per-lane task lists (test → impl → verify), and testable acceptance criteria. Designed to be run in **plan mode** and handed off to `execute-phase` for parallel execution.
 
 ## When to use
 
-- The input is a **multi-phase spec** (e.g., `specs/phase-plans-v1.md`) and the user wants to plan a specific phase.
-- The work touches **more than one area** of the codebase and would benefit from parallel lane execution.
-- You need **interface contracts frozen** before lanes diverge.
+- The input is a multi-phase spec (e.g., `specs/phase-plans-v1.md`) and the user wants to plan a specific phase.
+- The work touches more than one area of the codebase and would benefit from parallel lane execution.
+- You need interface contracts frozen before lanes diverge.
 
 ## When NOT to use
 
@@ -23,42 +23,28 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 
 | Arg | Required | Meaning |
 |---|---|---|
-| `<spec-path>` | **no** | Path to the spec file (relative to repo root). **Default: `specs/v1.md`** — omit this arg when working in a repo that follows the standard spec layout. |
+| `<spec-path>` | no | Path to the spec file (relative to repo root). Default: auto-detected `specs/phase-plans-v*.md` at the highest version. |
 | `<phase-name-or-id>` | yes | A phase heading, short alias (`P1`–`P7`), or any fuzzy match. Ambiguous → stop and ask via `AskUserQuestion`. |
 | `--output <path>` | no | Override the default output path. Default: `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md`. |
 | `--consensus` | no | Enable multi-agent architectural consensus (2–3 Plan teammates with different framings). |
 
-### Phase short aliases (consiliency-portal `specs/v1.md`)
-
-| Alias | Resolves to |
-|---|---|
-| `P1` | `Phase 1 — Shared semantics, schema hardening, and signal contract` |
-| `P2` | `Phase 2 — Home, Inbox, Guide, and role-based entry` |
-| `P3` | `Phase 3 — Operations, Execution, Development, and Maintenance refinement` |
-| `P4` | `Phase 4 — Projects, Executive, Knowledge, and Decisions` |
-| `P5` | `Phase 5 — Platform governance and admin hardening` |
-| `P6` | `Phase 6 — Prompt lifecycle and AI governance` |
-| `P7` | `Phase 7 — Finance, prototype support, and assistant workflows` |
-
-These are built-in defaults. For any other repo, derive aliases from the spec's own phase headings at runtime (Step 1) and present them to the user if the short form is ambiguous.
+Repos may supply a phase alias table (JSON file) via `$PLAN_PHASE_ALIASES` or fall back to the built-in `P1`–`P7` table. If the alias isn't recognized and no custom table is set, stop and ask via `AskUserQuestion` with the actual spec headings.
 
 ## Environment variables
 
-These can be set in the shell or in `.env` at the repo root to override defaults without touching the skill. Claude checks them in Step 1 before falling back to built-in values.
-
 | Variable | Default | Meaning |
 |---|---|---|
-| `PLAN_SPEC` | Auto-detected: highest-versioned `specs/phase-plans-v*.md` | Path to the spec file (relative to repo root). Overrides auto-detection entirely. |
-| `PLAN_VERSION` | Extracted from resolved spec filename (e.g., `v2` from `specs/phase-plans-v2.md`) | Version string embedded in the output filename. Override only when the filename convention can't be parsed. |
-| `PLAN_PHASE_ALIASES` | Built-in P1–P7 table above | Path to a JSON file mapping alias → full phase heading. Example: `specs/phase-aliases.json`. Use this in repos that don't follow the consiliency-portal phase structure. |
+| `PLAN_SPEC` | Auto-detected highest `specs/phase-plans-v*.md` | Path to the spec file. |
+| `PLAN_VERSION` | Extracted `v\d+` from spec filename | Version string embedded in output filename. |
+| `PLAN_PHASE_ALIASES` | Built-in alias table | Path to a JSON file mapping alias → phase heading. |
 
-Example `.env` to pin a specific version instead of auto-detecting the latest:
+Example `.env`:
 
 ```sh
 PLAN_SPEC=specs/phase-plans-v1.md
 ```
 
-Examples (invocation):
+Invocation examples:
 
 ```
 /plan-phase P1
@@ -68,7 +54,7 @@ Examples (invocation):
 
 ## Deferred tool preloading
 
-The tools this skill uses for task emission and user clarification are deferred in the current harness and must be registered via `ToolSearch` before first call. Load them at the top of Step 1 in a single query so Step 6's per-lane `TaskCreate` and any Step 1/3 `AskUserQuestion` don't pay a round-trip:
+Load tools used later in a single query so mid-workflow calls don't pay a round-trip:
 
 ```
 ToolSearch(query: "select:TaskCreate,AskUserQuestion,ExitPlanMode")
@@ -76,57 +62,44 @@ ToolSearch(query: "select:TaskCreate,AskUserQuestion,ExitPlanMode")
 
 ## Workflow (delegation-first)
 
-The main thread is an **orchestrator only**. It briefs specialists, synthesizes their output, enforces consensus, writes the final doc, and emits tasks. It does not `Grep`/`Read` the codebase directly — that is the Explore teammates' job. If the main thread is reaching for `Grep` or `Read` on anything other than the spec file and the plan file, that's a signal it should have delegated.
+The main thread is an orchestrator only. It briefs specialists, synthesizes their output, enforces consensus, writes the final doc, and emits tasks. It does not `Grep`/`Read` the codebase directly — that is the Explore teammates' job. If the main thread is reaching for `Grep` or `Read` on anything other than the spec file and the plan file, the teammate's brief was incomplete; re-brief via `SendMessage`.
 
 ### Step 1 — Resolve spec path, phase, and PHASE_ID
 
 **Spec path resolution (in order):**
-1. Check `$PLAN_SPEC` env var → if set, use it verbatim.
-2. If `<spec-path>` was explicitly passed as an arg → use it.
-3. Else glob `specs/phase-plans-v*.md`, parse the version numbers (`v1`, `v2`, …), and pick the **highest**. If multiple files exist (e.g., `v1.md` and `v2.md`), silently use the highest. If exactly one file found, use it.
-4. Else look for any `specs/*.md` file → if exactly one found, use it and note the assumption.
-5. Else **stop** and ask via `AskUserQuestion` which spec file to use.
+1. `$PLAN_SPEC` env var → use verbatim.
+2. `<spec-path>` arg → use verbatim.
+3. Glob `specs/phase-plans-v*.md`; pick the highest version.
+4. Else any `specs/*.md` if exactly one exists → use it and note the assumption.
+5. Else stop and ask via `AskUserQuestion`.
 
-**Version string resolution (used in output filename):**
-1. Check `$PLAN_VERSION` env var → if set, use it.
-2. Else extract the version token from the resolved spec filename by matching the pattern `v\d+` (e.g., `specs/phase-plans-v2.md` → `v2`).
-3. Else use `v1` as a safe default and note the assumption.
+**Version string** (for output filename): `$PLAN_VERSION` → pattern `v\d+` in filename → `v1` default.
 
-**Phase alias table resolution (in order):**
-1. Check `$PLAN_PHASE_ALIASES` env var → if set, `Read` that JSON file and use it as the alias map.
-2. Else use the built-in P1–P7 table.
+**Phase alias table**: `$PLAN_PHASE_ALIASES` (JSON file) → built-in table.
 
-**Phase name resolution (in order):**
-1. If `<phase-name-or-id>` is a short alias (`P1`–`P7` or matches a key in the alias map) → expand.
-2. Else fuzzy-match against headings in the spec.
-3. If zero matches → **stop** and use `AskUserQuestion` to show the actual headings.
-4. If multiple matches → **stop** and use `AskUserQuestion` to disambiguate.
+**Phase name**: short alias → fuzzy match → 0 matches: stop + ask → multiple matches: stop + disambiguate.
 
-**PHASE_ALIAS** (used in output filename): the resolved short alias in lowercase (e.g., `p1`). If no alias exists, use `phase-<N>`.
+**PHASE_ALIAS**: the resolved short alias in lowercase (e.g., `p1`). If none exists, use `phase-<N>`.
 
-**Output path:**
-- If `--output` was passed → use it verbatim.
-- Else: `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` (e.g., `plans/phase-plan-v1-p1.md`).
+**Output path**: `--output` override, else `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md`.
 
 ### Step 2 — Parallel reconnaissance via Explore teammates
 
-Launch up to **3** `Agent(subagent_type: "Explore")` calls **in a single message** (parallel tool calls). One per major area the phase touches. Each Agent call MUST set `name:` so it can be re-addressed later via `SendMessage`.
+Launch up to 3 `Agent(subagent_type: "Explore")` calls in a single message. One per major area the phase touches. Each Agent call MUST set `name:` so it can be re-addressed later via `SendMessage`.
 
-Teammate-naming template:
-
-- `explore-<area>` (e.g., `explore-schema`, `explore-workers`, `explore-portal`, `explore-infra`).
+Teammate-naming template: `explore-<area>` (e.g., `explore-schema`, `explore-workers`).
 
 Each brief must include:
 
-- The phase's **Objective** + **Exit criteria** copied verbatim from the spec.
+- The phase's Objective + Exit criteria copied verbatim from the spec.
 - A scoped question: "Map existing code in `<paths>` relevant to this phase. Surface: (a) existing utilities/patterns to reuse, (b) current type/schema/interface shapes that constrain the design, (c) places that will need to change, (d) hidden coupling that would break worktree isolation."
 - A length cap: "Report in under 400 words."
 
-Block until all return. Their findings populate the `## Context` section of the plan doc.
+Block until all return. Their findings populate `## Context`.
 
 ### Step 3 — Architectural decisions
 
-**Step 3a — With `--consensus`**: Launch 2–3 `Agent(subagent_type: "Plan")` calls **in a single message**, each with a distinct framing:
+**With `--consensus`**: Launch 2–3 `Agent(subagent_type: "Plan")` calls in a single message, each with a distinct framing:
 
 | Name | Framing |
 |---|---|
@@ -136,21 +109,21 @@ Block until all return. Their findings populate the `## Context` section of the 
 
 Each teammate's brief includes: the spec phase section, all Explore teammate findings, and its framing. Each must return: (1) proposed interface freezes, (2) proposed lane decomposition with file ownership, (3) rationale, (4) known risks.
 
-Synthesize per the **Consensus mechanism** below. If round 1 doesn't converge, re-address the same named teammates via `SendMessage` (not new `Agent` calls) with the specific disagreement surfaced. **Max 2 rounds.**
+Synthesize per the Consensus mechanism below. If round 1 doesn't converge, re-address the same named teammates via `SendMessage` (not new `Agent` calls) with the specific disagreement surfaced. Max 2 rounds.
 
-**Step 3b — Without `--consensus`**: Launch 1 `Agent(subagent_type: "Plan", name: "arch-baseline")` for baseline architecture decisions.
+**Without `--consensus`**: Launch 1 `Agent(subagent_type: "Plan", name: "arch-baseline")` for baseline architecture decisions.
 
 ### Step 4 — Lane decomposition (main thread)
 
 Synthesize Explore + Plan output into swim lanes. For each lane, determine:
 
 - **Scope** — one sentence.
-- **Owned files** — glob list. MUST be disjoint from every other lane's globs.
+- **Owned files** — glob list. Must be disjoint from every other lane's globs.
 - **Interfaces provided** — symbols, types, endpoints, migrations this lane publishes.
 - **Interfaces consumed** — symbols this lane depends on from other lanes.
 - **Parallel-safe** — `yes` / `no` / `mixed` (with explanation if not `yes`).
 
-Run the **Lane validation checklist** (below) before proceeding. If it fails, return to Step 3 with the failure noted.
+Run the Lane validation checklist (below) before proceeding. If it fails, return to Step 3 with the failure noted.
 
 ### Step 5 — Task authoring (main thread)
 
@@ -160,29 +133,31 @@ For each lane, author an ordered task list:
 - One or more **impl** tasks (each depends on the preceding test task).
 - One **verify** task (runs the full test suite for the lane, plus any integration checks).
 
-Tasks are identified `<SL-ID>.<N>` where `<SL-ID>` is the lane's ID.
+Tasks are identified `<SL-ID>.<N>`.
 
 ### Step 6 — Emit per-lane tasks via TaskCreate
 
-For each lane, emit **one `TaskCreate`** whose:
+For each lane, emit one `TaskCreate`:
 
 - **Title**: `<SL-ID> — <lane name>`
 - **Body**: `Depends on: <upstream SL-IDs>`, `Blocks: <downstream SL-IDs>`, `Parallel-safe: <flag>`, and the ordered child task list (`test / impl / verify`).
 
-This makes the lane DAG visible in the user's task pane and becomes the hand-off surface for the future `execute-phase` skill.
+This makes the lane DAG visible in the user's task pane and becomes the hand-off surface for `execute-phase`.
 
 ### Step 7 — Write plan doc
 
-Write the plan doc to **both**:
+Write to both:
 
-1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` in the current project (e.g., `plans/phase-plan-v1-p1.md`).
-2. The plan-mode scratch file path (found in the plan-mode system reminder — do **not** guess the path).
+1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` in the current project.
+2. The plan-mode scratch file path (found in the plan-mode system reminder — do not guess the path).
 
-After writing, run:
+Then validate:
+
 ```
 python scripts/validate_plan_doc.py plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md
 ```
-Fix any errors before calling `ExitPlanMode`. The validator checks required headings, disjoint file ownership, DAG acyclicity, and that every acceptance criterion is a testable assertion.
+
+Fix any errors before calling `ExitPlanMode`. The validator checks required headings, disjoint file ownership, DAG acyclicity, grep-assertion-paired-with-tests, and eager-reexport risks.
 
 ### Step 8 — ExitPlanMode
 
@@ -190,7 +165,7 @@ Call `ExitPlanMode`. The plan doc is the approval surface.
 
 ## Plan document template
 
-Use these headings verbatim (stable IDs matter — `execute-phase` parses them):
+Use these headings verbatim — `execute-phase` parses them:
 
 ```markdown
 # <PHASE_ID>: <Phase Name>
@@ -203,11 +178,10 @@ Use these headings verbatim (stable IDs matter — `execute-phase` parses them):
 - [ ] IF-0-<PHASE>-<N+1> — …
 
 ## Cross-Repo Gates
-<Omit this section entirely if the phase only touches this repo.>
+<Omit entirely if the phase only touches this repo.>
 - [ ] IF-XR-<N> — <interface that must be frozen across repo boundaries>
 
 ## Lane Index & Dependencies
-<Machine-parseable block. One stanza per lane.>
 
 SL-1 — <lane name>
   Depends on: (none)
@@ -239,8 +213,11 @@ SL-2 — <lane name>
 
 ## Execution Notes
 - <Parallelism caveats, sequencing gotchas, lanes that can't be worktree-isolated (shared migrations, shared generated files), etc.>
-- **Single-writer files**: <files that multiple lanes might want to touch but only one is allowed to modify — e.g., barrel index files, generated types, nav config, worker router. List the owner lane for each.>
+- **Single-writer files**: <files multiple lanes might want to touch but only one is allowed to modify — e.g., barrel index files, generated types, nav config, worker router. List the owner lane for each.>
 - **Known destructive changes**: <any deletions a lane legitimately performs, named by file path. If empty, write "none — every lane is purely additive." This is the whitelist execute-phase's pre-merge check uses to distinguish legitimate deletions from stale-base accidents.>
+- **Expected add/add conflicts**: <if SL-0 preamble stubs a file that a later lane replaces the body of, list the file path here. The orchestrator pre-authorizes `git checkout --theirs <path>` resolution at merge time.>
+- **SL-0 re-exports**: <if the preamble adds symbols to an `__init__.py`, specify the `__getattr__` lazy pattern (not top-level imports). Eager re-exports break package load when a later lane drops or renames the symbol.>
+- **Worktree naming**: execute-phase allocates unique worktree names via `scripts/allocate_worktree_name.sh`. Plan doc does not need to spell out lane worktree paths.
 - **Stale-base guidance** (copy verbatim): Lane teammates working in isolated worktrees do not see sibling-lane merges automatically. If a lane finds its worktree base is pre-<first upstream dependency's merge>, it MUST stop and report rather than committing — the orchestrator will re-spawn or rebase. Silent `git reset --hard` or `git checkout HEAD~N -- …` in a stale worktree produces commits that destroy peer-lane work on `--no-ff` merge.
 - (If `--consensus` was used) **Architectural choices**: <consensus summary, or unresolved disagreement with dissent recorded>
 
@@ -278,41 +255,42 @@ Applied by the main thread after `--consensus` Step 3a:
 
 1. **Unanimous** across all teammates → accept directly.
 2. **Majority (2 of 3)** → accept the majority view; record the dissenting view under `## Execution Notes > Architectural choices > Dissent`.
-3. **No majority** → re-address the same named teammates via `SendMessage` with the specific conflict surfaced ("arch-minimal and arch-clean disagree on whether X should live in package Y or Z — reconsider with <argument>"). Max 1 additional round.
+3. **No majority** → re-address the same named teammates via `SendMessage` with the specific conflict surfaced. Max 1 additional round.
 4. **Still no convergence** → main thread picks (biased toward `arch-parallel` for this skill's purpose) and records the full disagreement under `## Execution Notes > Unresolved architectural disagreements`.
 
 ## Lane validation checklist
 
 Before writing the plan doc, verify:
 
-- [ ] **Disjoint file ownership** — no two lanes' `Owned files` globs intersect. (If uncertain, expand globs mentally and check; for generated files, call out shared-generated status in Execution Notes.)
+- [ ] **Disjoint file ownership** — no two lanes' `Owned files` globs intersect. For generated files, call out shared-generated status in Execution Notes.
 - [ ] **DAG has no cycles** — a topological sort of `Depends on:` succeeds.
 - [ ] **Every `impl` task has a preceding `test` task** in the same lane.
 - [ ] **Every acceptance criterion is a testable assertion**, not prose. "Users can log in" is not testable; "`POST /api/auth` returns 200 with a valid session cookie for a registered user" is.
+- [ ] **Grep assertions are paired with tests.** Any acceptance criterion using `rg` or `grep` as its sole check must also cite a test file — grep alone is defeated by renaming a symbol to pass the regex.
 - [ ] **Interface freeze gates are concrete** — name the symbol/endpoint/migration, not a vibe.
-- [ ] **Stale-base resilience** — for each lane that isn't at the root of the DAG, list under `Interfaces consumed` every upstream symbol, migration number, or file path it reads. This gives `execute-phase` the evidence list to verify the lane's base wasn't stale, and narrows the blast radius of a mis-based commit (Execution Notes should call out "if lane teammate finds its worktree base is pre-<upstream-SL>, stop and report — do not rebase silently"). P6 lost three lanes to stale-base destructive commits that weren't caught until pre-merge diff.
-- [ ] **Cross-lane file deletions called out** — if any lane legitimately deletes a file that another lane produces (rare but real: a lane that replaces a stub), record it in Execution Notes under a "Known destructive changes" block. `execute-phase` uses this to distinguish legitimate deletions from stale-base accidents during its Step-7 destructiveness check.
-- [ ] **Plan doc passes `validate_plan_doc.py`** — run `python scripts/validate_plan_doc.py <plan-doc-path>` and confirm zero errors before calling `ExitPlanMode`. Do not skip even when the changes look obviously correct; the validator catches structural issues (missing headings, duplicate lane IDs, malformed task tables) that manual review misses.
+- [ ] **Stale-base resilience** — for each lane that isn't a DAG root, list every upstream symbol, migration number, or file path it reads under `Interfaces consumed`. This gives `execute-phase` evidence to verify the base wasn't stale and narrows the blast radius of a mis-based commit. Execution Notes must call out "if lane teammate finds its worktree base is pre-<upstream-SL>, stop and report — do not rebase silently."
+- [ ] **Cross-lane file deletions called out** — if any lane legitimately deletes a file that another lane produces (rare but real: a lane replacing a stub), record it under Execution Notes' "Known destructive changes" block.
+- [ ] **Expected add/add conflicts declared** — if SL-0 preamble stubs a file that a lane replaces, add it under Execution Notes' "Expected add/add conflicts" block.
+- [ ] **SL-0 re-exports use `__getattr__` lazy form** — declared under Execution Notes' "SL-0 re-exports" block.
+- [ ] **Plan doc passes `validate_plan_doc.py`** — run the validator and confirm zero errors before calling `ExitPlanMode`. The validator catches structural issues (missing headings, duplicate lane IDs, malformed task tables) that manual review misses.
 
 ## Teamwork & delegation posture
 
-This skill is an exercise in delegation. The rules:
-
-- **Main thread = orchestrator only.** Brief, synthesize, write, emit. Do not `Grep`/`Read` the codebase directly during Steps 2–5. If you find yourself doing so, stop — the teammate's brief was incomplete. Re-brief via `SendMessage`.
-- **Parallel-by-default.** Step 2 (Explore) and Step 3a (consensus Plan) MUST be issued as a single message with multiple `Agent` tool calls. Sequential spawning is a bug.
-- **Name every teammate.** Set `name:` on every `Agent` call so you can re-address via `SendMessage` without losing the teammate's context or paying to restart.
-- **Task list as source of truth for the lane DAG.** Step 6's per-lane `TaskCreate` is how the plan becomes actionable. Each lane task is addressable by ID for the future `execute-phase` skill.
-- **Hand-off to `execute-phase`.** After `ExitPlanMode` approval, invoke `/execute-phase <plan-doc-path>`. That skill reads the plan doc + task list, validates the doc with `validate_plan_doc.py`, then registers a team (`TeamCreate`) and spawns one `Agent(team_name=…, name="lane-<sl-id>", subagent_type="general-purpose")` per lane. Each teammate's brief includes a mandatory `EnterWorktree` first step so its filesystem work lands in an isolated worktree branch (`worktree-<teammate-name>` by default); the orchestrator resolves that branch via the teammate's reply-envelope `commit_sha` and merges with `--no-ff`. Lanes merge to main only after their lane-local verify task passes and every interface freeze gate for that lane's consumers is green. **Do NOT pass `isolation: "worktree"` alongside `team_name`** — the harness silently runs the teammate in-process and drops the isolation kwarg, producing zero worktrees and relying on LLM file-ownership discipline alone.
-- **Manual hand-off (when `execute-phase` is unavailable).** Run `python scripts/validate_plan_doc.py <plan-doc-path>` first — fix any reported errors before proceeding. Then execute each lane in one of two ways:
-  - (a) **Standalone** — `Agent(isolation: "worktree", name: "<SL-ID>", subagent_type: "general-purpose")` **without** `team_name`. The `isolation` kwarg is honored in this form; loses team coordination (SendMessage-based retry, shared tasklist).
-  - (b) **Teamed** — `TeamCreate` + `Agent(team_name=…, name="<SL-ID>", subagent_type="general-purpose")`, and the teammate's first tool call is `EnterWorktree` (load via `ToolSearch(query="select:EnterWorktree")` if not already in its registry). Worktree via tool, team coordination preserved.
+- **Main thread = orchestrator only.** Brief, synthesize, write, emit. Do not `Grep`/`Read` the codebase directly during Steps 2–5. If you find yourself doing so, the teammate's brief was incomplete — re-brief via `SendMessage`.
+- **Parallel-by-default.** Step 2 (Explore) and Step 3a (consensus Plan) MUST be issued as a single message with multiple `Agent` tool calls.
+- **Name every teammate.** Set `name:` on every `Agent` call so you can re-address via `SendMessage` without losing context or paying to restart.
+- **Task list as source of truth for the lane DAG.** Step 6's per-lane `TaskCreate` is how the plan becomes actionable; each lane task is addressable by ID for `execute-phase`.
+- **Hand-off to `execute-phase`.** After `ExitPlanMode` approval, invoke `/execute-phase <plan-doc-path>`. That skill reads the plan doc + task list, validates it, then registers a team (`TeamCreate`) and spawns one `Agent(team_name=…, name="<allocated-name>", subagent_type="general-purpose")` per lane. Each teammate's brief includes a mandatory `ExitWorktree`-then-`EnterWorktree` preamble so filesystem work lands in an isolated worktree branch; the orchestrator resolves that branch via the teammate's reply-envelope `commit_sha` and merges with `--no-ff`. Lanes merge to main only after their lane-local verify task passes and every interface freeze gate for that lane's consumers is green. Do NOT pass `isolation: "worktree"` alongside `team_name` — the harness silently runs the teammate in-process and drops the isolation kwarg, producing zero worktrees.
+- **Manual hand-off (when `execute-phase` is unavailable).** Run `python scripts/validate_plan_doc.py <plan-doc-path>` first. Then execute each lane in one of two ways:
+  - (a) **Standalone** — `Agent(isolation: "worktree", name: "<SL-ID>", subagent_type: "general-purpose")` without `team_name`. The `isolation` kwarg is honored in this form; loses team coordination.
+  - (b) **Teamed** — `TeamCreate` + `Agent(team_name=…, name="<SL-ID>", subagent_type="general-purpose")`, and the teammate's first tool call is `EnterWorktree` (load via `ToolSearch(query="select:EnterWorktree")`). Worktree via tool, team coordination preserved.
 
 ## Output contract
 
-After `ExitPlanMode` approval, the following artifacts exist:
+After `ExitPlanMode` approval, three artifacts exist:
 
-1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` (e.g., `plans/phase-plan-v1-p1.md`) — committable, valid markdown, all headings present.
+1. `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md` — committable, valid markdown, all headings present.
 2. The plan-mode scratch file — identical contents.
 3. One `TaskCreate`'d top-level task per lane, each with `test / impl / verify` children, containing `Depends on:` / `Blocks:` / `Parallel-safe:` metadata in the body.
 
-Those three artifacts are the full hand-off surface. Everything downstream (manual lane execution, or the future `execute-phase` skill) reads from them.
+Those three are the full hand-off surface — everything downstream (manual lane execution or `execute-phase`) reads from them.

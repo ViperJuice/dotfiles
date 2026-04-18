@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # parent_tree_leakage_check.sh — detect when a teammate's filesystem edits
-# escaped its worktree into the parent checkout (Lesson #10 defense).
+# escaped its worktree into the parent checkout, or when EnterWorktree
+# silently fell back to in-place branch creation in the parent.
 #
 # Usage:
-#     parent_tree_leakage_check.sh <lane-id> <owned-globs-file>
+#     parent_tree_leakage_check.sh <lane-id> <owned-globs-file> [<merge-target>]
 #
 #     <lane-id>            Informational only; echoed into stdout for
 #                          orchestrator logging.
@@ -12,11 +13,15 @@
 #                          Passing /dev/null is valid (treat empty globs
 #                          as "nothing is owned" → any dirty file counts
 #                          as unrelated).
+#     <merge-target>       Optional. Branch the phase merges into (default
+#                          "main"). Used by the new PARENT_ON_WRONG_BRANCH
+#                          probe.
 #
 # Behavior: emits EXACTLY one token on stdout, exit 0 always.
 #
 #   CLEAN
-#     - Working tree has no uncommitted changes. No leakage.
+#     - Working tree has no uncommitted changes AND the parent is on the
+#       merge-target branch. No leakage.
 #
 #   LEAKAGE_DETECTED
 #     - Working tree has dirty files AND at least one matches the lane's
@@ -27,6 +32,14 @@
 #     - Working tree has dirty files but NONE match the lane's owned
 #       globs. Probably other orchestrator-level changes; caller decides.
 #
+#   PARENT_ON_WRONG_BRANCH
+#     - Working tree is CLEAN but the parent checkout is on a branch
+#       OTHER than <merge-target>. Symptom of EnterWorktree silently
+#       falling back to in-place branch creation (a name collision is
+#       the typical cause). The lane's commit is usually fine — merge
+#       by SHA, then `git checkout <merge-target>` in the parent before
+#       post-merge worktree cleanup.
+#
 # Implementation notes:
 #   - Runs from the parent checkout (the cwd of the orchestrator's git
 #     context, not the lane's worktree).
@@ -35,13 +48,14 @@
 
 set -uo pipefail
 
-if [[ $# -ne 2 ]]; then
-    echo "usage: parent_tree_leakage_check.sh <lane-id> <owned-globs-file>" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+    echo "usage: parent_tree_leakage_check.sh <lane-id> <owned-globs-file> [<merge-target>]" >&2
     exit 2
 fi
 
 lane_id="$1"
 globs_path="$2"
+merge_target="${3:-main}"
 
 # Load owned globs.
 globs=()
@@ -71,6 +85,13 @@ while IFS= read -r line; do
 done < <(git status --porcelain 2>/dev/null)
 
 if [[ ${#dirty_paths[@]} -eq 0 ]]; then
+    # Parent is clean — but is it on the right branch?
+    current_branch="$(git branch --show-current 2>/dev/null || true)"
+    if [[ -n "$current_branch" && "$current_branch" != "$merge_target" ]]; then
+        echo "parent_tree_leakage_check: $lane_id — parent checkout is on branch '$current_branch' (expected '$merge_target')" >&2
+        echo "PARENT_ON_WRONG_BRANCH"
+        exit 0
+    fi
     echo "CLEAN"
     exit 0
 fi
