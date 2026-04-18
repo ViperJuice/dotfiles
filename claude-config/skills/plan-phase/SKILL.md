@@ -213,7 +213,7 @@ SL-2 — <lane name>
 
 ## Execution Notes
 - <Parallelism caveats, sequencing gotchas, lanes that can't be worktree-isolated (shared migrations, shared generated files), etc.>
-- **Single-writer files**: <files multiple lanes might want to touch but only one is allowed to modify — e.g., barrel index files, generated types, nav config, worker router. List the owner lane for each.>
+- **Single-writer files**: <files multiple lanes might want to touch but only one is allowed to modify — e.g., barrel index files, generated types, nav config, worker router. List the owner lane for each. If a single-writer file is also touched by a later phase, name this phase's owner lane and have them author-at-plan-time any additions the later phase's consumer lanes will need. Re-opening the file from the later phase's lane adds a cross-phase serialization edge that shouldn't exist.>
 - **Known destructive changes**: <any deletions a lane legitimately performs, named by file path. If empty, write "none — every lane is purely additive." This is the whitelist execute-phase's pre-merge check uses to distinguish legitimate deletions from stale-base accidents.>
 - **Expected add/add conflicts**: <if SL-0 preamble stubs a file that a later lane replaces the body of, list the file path here. The orchestrator pre-authorizes `git checkout --theirs <path>` resolution at merge time.>
 - **SL-0 re-exports**: <if the preamble adds symbols to an `__init__.py`, specify the `__getattr__` lazy pattern (not top-level imports). Eager re-exports break package load when a later lane drops or renames the symbol.>
