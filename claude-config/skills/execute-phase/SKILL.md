@@ -69,10 +69,9 @@ Build the lane graph. Topologically sort it; reject on cycle with a clear error.
 
 ### Step 2 — Preflight
 
-- `git status --porcelain` → must be empty. If not, stop and ask via `AskUserQuestion` whether to stash, commit, or abort.
+- **Run `scripts/verify_harness.sh <merge-target>`.** This script enforces the hard gates deterministically: git + git-worktree available, inside a work tree, merge-target branch exists locally, working tree clean (allowlist: `.claude/worktrees/`, `.claude/execute-phase-state.json`), `.gitignore` covers worktree paths. **Non-zero exit blocks dispatch.** The dirty-tree check has no orchestrator-side override — if it fails, you MUST invoke `AskUserQuestion` with the options `[commit the changes as a chore, stash for the duration of the phase, abort /execute-phase]` and take the user's answer. Do not rationalize around a dirty tree even if the diff looks like "noise" — test-run artifacts and config drift are state changes that deserve a commit decision.
 - Record merge target = current branch (or `$EXECUTE_MERGE_TARGET`).
 - Sanity check: every symbol appearing in any lane's `Interfaces consumed` must either be produced by an upstream lane's `Interfaces provided` OR be pre-existing (skip unknown symbols with a warning, don't hard-fail).
-- Ensure `.gitignore` contains `.worktrees/` and `.claude/execute-phase-state.json`; if not, append.
 - If `--dry-run`: print the topological schedule with per-lane model/thinking assignments (see Step 3) and stop here.
 
 ### Step 2a — Worktree hygiene preflight
@@ -350,6 +349,7 @@ Both paths are auto-added to `.gitignore` in Step 2.
 - **Never trust a branch name.** Resolve work by commit SHA from the reply envelope, not by branch convention. The harness sometimes auto-names branches and lanes occasionally squat on sibling worktrees.
 - **Never `--no-ff` merge without the destructiveness check.**
 - **Never resume a STOPed teammate with no commits.** Kill + respawn instead; the worktree is gone and the resumed instance writes into the parent.
+- **Never rationalize past a dirty-tree preflight fail.** `verify_harness.sh` is the gate. If check (4) fails, the ONLY paths forward are: (a) commit the diff as a `chore:`, (b) `git stash push -u` and restore post-phase, (c) abort. No "it's just a test-run artifact" exceptions.
 
 ## Browser verification capabilities
 

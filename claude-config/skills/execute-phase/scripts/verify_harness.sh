@@ -53,12 +53,28 @@ else
     fail "(3) merge target '$target' does not exist locally (try: git fetch origin $target:$target)"
 fi
 
-# (4) working tree clean
-dirty_count=$(git status --porcelain 2>/dev/null | wc -l)
+# (4) working tree clean (allowlist excludes orchestrator-owned paths)
+#
+# Allowlist: paths that may appear in `git status --porcelain` during normal
+# phase execution without blocking dispatch:
+#   `?? .claude/worktrees/`    — untracked dir holding live lane worktrees
+#   `?? .claude/execute-phase-state.json` — orchestrator state file
+#
+# Everything else (including gitignore-exempted `.index_metadata.json`, any
+# tracked-file modification, any other untracked file) must be committed,
+# stashed, or explicitly resolved via AskUserQuestion BEFORE dispatch —
+# no orchestrator-side rationalization.
+dirty_lines="$(git status --porcelain 2>/dev/null | \
+    grep -vE '^\?\? \.claude/worktrees/?$|^\?\? \.claude/execute-phase-state\.json$' || true)"
+dirty_count=0
+if [[ -n "$dirty_lines" ]]; then
+    dirty_count=$(echo "$dirty_lines" | wc -l)
+fi
 if [[ "$dirty_count" -eq 0 ]]; then
-    pass "(4) working tree clean"
+    pass "(4) working tree clean (or only allowlisted orchestrator paths dirty)"
 else
-    fail "(4) working tree has $dirty_count uncommitted change(s); commit or stash before /execute-phase"
+    fail "(4) working tree has $dirty_count non-allowlisted uncommitted change(s); commit, stash, or abort before /execute-phase. Offending paths:"
+    echo "$dirty_lines" | sed 's/^/verify_harness:     /' >&2
 fi
 
 # (5) .gitignore covers worktree paths — WARN only, not a hard-fail.
