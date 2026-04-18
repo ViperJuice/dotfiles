@@ -759,13 +759,13 @@ if command -v antigravity &>/dev/null || [ -d ~/.gemini/antigravity ]; then
         skill_name=$(basename "$skill_dir")
         [[ "$skill_name" == "_template" ]] && continue
         [[ "$skill_name" == "wsl-screenshots" && "$PLATFORM" != "wsl" ]] && continue
-        ln -sf "$skill_dir" ~/.gemini/antigravity/skills/"$skill_name"
+        ln -sfn "$skill_dir" ~/.gemini/antigravity/skills/"$skill_name"
     done
 
     # Antigravity-specific skills
     for skill_dir in "$DOTFILES_DIR/antigravity-config/skills/"*/; do
         [ -d "$skill_dir" ] || continue
-        ln -sf "$skill_dir" ~/.gemini/antigravity/skills/"$(basename "$skill_dir")"
+        ln -sfn "$skill_dir" ~/.gemini/antigravity/skills/"$(basename "$skill_dir")"
     done
 
     # MCP config pointing to PMCP gateway
@@ -804,7 +804,7 @@ if command -v pi &>/dev/null || [ -d ~/.pi/agent ]; then
     # Symlink PI-specific skills
     for skill_dir in "$DOTFILES_DIR/pi-config/skills/"*/; do
         [ -d "$skill_dir" ] || continue
-        ln -sf "$skill_dir" ~/.pi/agent/skills/"$(basename "$skill_dir")"
+        ln -sfn "$skill_dir" ~/.pi/agent/skills/"$(basename "$skill_dir")"
     done
 
     echo "Configured PI agent (instructions + skills)"
@@ -924,7 +924,7 @@ echo "Linked Kitty config"
 # Zellij config
 mkdir -p ~/.config/zellij
 ln -sf "$DOTFILES_DIR/zellij/config.kdl" ~/.config/zellij/config.kdl
-ln -sf "$DOTFILES_DIR/zellij/layouts" ~/.config/zellij/layouts
+ln -sfn "$DOTFILES_DIR/zellij/layouts" ~/.config/zellij/layouts
 echo "Linked Zellij config"
 
 # WSL: Detect Windows username and symlink Screenshots folder
@@ -1045,8 +1045,8 @@ fi
 
 if [[ "$PLATFORM" == "wsl" ]]; then
     # WSL-specific skills
-    ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
-    ln -sf "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.codex/skills/wsl-screenshots
+    ln -sfn "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.claude/skills/wsl-screenshots
+    ln -sfn "$DOTFILES_DIR/claude-config/skills/wsl-screenshots" ~/.codex/skills/wsl-screenshots
     echo "Installed WSL-specific skills (wsl-screenshots)"
 fi
 
