@@ -95,7 +95,11 @@ Each brief must include:
 
 - The phase's Objective + Exit criteria copied verbatim from the spec.
 - A scoped question: "Map existing code in `<paths>` relevant to this phase. Surface: (a) existing utilities/patterns to reuse, (b) current type/schema/interface shapes that constrain the design, (c) places that will need to change, (d) hidden coupling that would break worktree isolation."
+- A 1–2 sentence architecture context: how these paths fit the larger system.
+- Related files the teammate should know about but not rewrite (type defs, tests, shared config).
 - A length cap: "Report in under 400 words."
+
+Apply the `/task-contextualizer` checklist to every brief.
 
 Block until all return. Their findings populate `## Context`.
 
@@ -109,7 +113,7 @@ Block until all return. Their findings populate `## Context`.
 | `arch-clean` | Clean architecture. Willing to refactor to make the design right. |
 | `arch-parallel` | Maximize parallelism. Prefer more, smaller lanes over fewer, fatter lanes, even if it adds interface surface. |
 
-Each teammate's brief includes: the spec phase section, all Explore teammate findings, and its framing. Each must return: (1) proposed interface freezes, (2) proposed lane decomposition with file ownership, (3) rationale, (4) known risks.
+Each teammate's brief includes: the spec phase section, all Explore teammate findings, and its framing. Apply the `/task-contextualizer` checklist — architecture context and related-files list carry over from the Explore briefs. Each must return: (1) proposed interface freezes, (2) proposed lane decomposition with file ownership, (3) rationale, (4) known risks.
 
 Synthesize per the Consensus mechanism below. If round 1 doesn't converge, re-address the same named teammates via `SendMessage` (not new `Agent` calls) with the specific disagreement surfaced. Max 2 rounds.
 

@@ -150,12 +150,16 @@ Repeat until all lanes are `merged` or halt is triggered:
 4. **Teammate brief** contains:
    - **Worktree isolation (mandatory, first tool call)**: Load `EnterWorktree` via `ToolSearch(query="select:EnterWorktree,ExitWorktree")` if not already in the tool registry. Call `ExitWorktree(action="keep")` FIRST (no-op if no session active; clears any stale session-state flag inherited from a prior teammate). Then call `EnterWorktree(name: "<allocated-name>")` as the very next tool call, BEFORE any file operation. Every subsequent edit/commit goes into that worktree. At the end, call `ExitWorktree(action: "keep")` so the worktree and branch remain available for the orchestrator to merge.
    - The full `### SL-N` section copied verbatim from the plan doc.
+   - **Architecture context** (1–2 sentences): how this lane fits the phase; how this phase fits the roadmap.
+   - **Related files** the lane reads but does not own: type defs, test fixtures, shared config. Distinct from `Owned files`.
    - Concrete upstream artifact paths (populated from now-merged upstream lanes) for every entry in `Interfaces consumed`.
    - The merge target branch and the orchestrator's current tip SHA, injected as `<TIP_SHA>` (used by the stale-base check below).
    - The lane's test → impl → verify task list.
    - Thinking-level guidance matching the lane's profile.
    - **Stale-base discipline**: AFTER `EnterWorktree` returns and BEFORE any code change, run `git rebase main` (or `git merge main --no-ff -m "merge: incorporate prior-lane foundation"`). Verify with `git merge-base --is-ancestor <TIP_SHA> HEAD && echo OK || echo STALE`. Repeat the rebase immediately before your final commit. On conflicts, STOP and report — do not resolve silently. Never `git reset --hard` or `git checkout HEAD~N -- …` in a stale worktree; this destroys peer-lane work on `--no-ff` merge.
    - **Structured-reply instruction**: "When done, reply with JSON `{lane, verify_exit_code, failed_tasks, notes, commit_sha, branch, worktree_path}`. All seven fields are mandatory. `branch` and `worktree_path` come from `EnterWorktree`'s return value."
+
+   Apply the `/task-contextualizer` checklist to every brief.
 
 5. **Await completions**. For each:
    - `verify_exit_code == 0` → run gate verification (Step 6). On green → auto-merge (Step 7). Mark lane `merged`, flip produced gates to `closed`, update the lane's `TaskCreate`'d task to `completed`.
