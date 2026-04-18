@@ -27,6 +27,7 @@ Architecture-first planner for a single phase of a multi-phase specification. Pr
 | `<phase-name-or-id>` | yes | A phase heading, short alias (`P1`–`P7`), or any fuzzy match. Ambiguous → stop and ask via `AskUserQuestion`. |
 | `--output <path>` | no | Override the default output path. Default: `plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md`. |
 | `--consensus` | no | Enable multi-agent architectural consensus (2–3 Plan teammates with different framings). |
+| `--review-external` | no | After writing the plan doc, run Gemini + Codex CLIs in parallel to review it. Requires `gemini` and `codex` installed and authenticated. Produces a `_reviews.md` sibling file. |
 
 Repos may supply a phase alias table (JSON file) via `$PLAN_PHASE_ALIASES` or fall back to the built-in `P1`–`P7` table. If the alias isn't recognized and no custom table is set, stop and ask via `AskUserQuestion` with the actual spec headings.
 
@@ -49,7 +50,8 @@ Invocation examples:
 ```
 /plan-phase P1
 /plan-phase P3 --consensus
-/plan-phase specs/roadmap.md "Phase 3: Billing" --consensus
+/plan-phase P3 --review-external
+/plan-phase specs/roadmap.md "Phase 3: Billing" --consensus --review-external
 ```
 
 ## Deferred tool preloading
@@ -158,6 +160,21 @@ python scripts/validate_plan_doc.py plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md
 ```
 
 Fix any errors before calling `ExitPlanMode`. The validator checks required headings, disjoint file ownership, DAG acyclicity, grep-assertion-paired-with-tests, and eager-reexport risks.
+
+### Step 7.5 — External CLI review (only if `--review-external`)
+
+Run the shared review script:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/.claude/skills/_shared/review_with_cli.py" \
+  --artifact plans/phase-plan-<VERSION>-<PHASE_ALIAS>.md \
+  --prompt-file "$(git rev-parse --show-toplevel)/.claude/skills/plan-phase/assets/review_prompt.md" \
+  --out plans/phase-plan-<VERSION>-<PHASE_ALIAS>_reviews.md
+```
+
+If the script reports the frontier-model cache is empty, it prints a discovery prompt to stderr. Surface to the user via `AskUserQuestion` with options `[run discovery now, skip review this run, abort]`.
+
+Tell the user: "Review written to `plans/phase-plan-<VERSION>-<PHASE_ALIAS>_reviews.md`. When Gemini and Codex flag the same concern, treat it as real; divergent comments are context, not verdicts."
 
 ### Step 8 — ExitPlanMode
 

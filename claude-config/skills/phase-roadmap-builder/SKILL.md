@@ -27,6 +27,7 @@ Produces the `specs/phase-plans-v<N>.md` roadmap that `/plan-phase` consumes. Di
 | `<spec-path>` | no | Path to an input markdown spec to fold into the roadmap. Optional; conversation context is the primary source. |
 | `--output <path>` | no | Override the default output path. Default: `specs/phase-plans-v<N>.md` at the repo root. |
 | `--append` | no | Force append mode even if the resolved output path is new (rare). |
+| `--review-external` | no | After writing the roadmap, run Gemini + Codex CLIs in parallel to review it. Requires `gemini` and `codex` installed and authenticated. Produces a `_reviews.md` sibling file. |
 
 ## Mode detection
 
@@ -117,6 +118,21 @@ python3 "$(git rev-parse --show-toplevel)/.claude/skills/phase-roadmap-builder/s
 
 Fix every reported error before handing off. The validator enforces: required headings, alias uniqueness, DAG acyclicity, IF-gate ID format, Depends-on correctness, and the ≥2-lanes-per-phase rule (with a preamble-phase escape hatch).
 
+### Step 8.5 — External CLI review (only if `--review-external`)
+
+After the roadmap is written and validated, run:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/.claude/skills/_shared/review_with_cli.py" \
+  --artifact <output-path> \
+  --prompt-file "$(git rev-parse --show-toplevel)/.claude/skills/phase-roadmap-builder/assets/review_prompt.md" \
+  --out <output-path>_reviews.md
+```
+
+If the frontier-model cache is empty, the script prints the discovery prompt to stderr. Surface to the user via `AskUserQuestion` with options `[run discovery now, skip review this run, abort]`.
+
+Tell the user: "Review written to `<output-path>_reviews.md`. Agreements between Gemini and Codex are real signal; divergences are context."
+
 ### Step 9 — Write and exit
 
 Write the roadmap to the resolved output path. Call `ExitPlanMode` — the roadmap is the approval surface. After approval, the hand-off message is: "Run `/plan-phase <ALIAS>` for each phase. Phases with no shared DAG ancestor (e.g., `<list them>`) can be planned concurrently."
@@ -156,7 +172,7 @@ Leave `## Context`, `## Architecture North Star`, `## Assumptions`, `## Non-Goal
 
 ### Step A6 — Validate + exit
 
-Same as Step 8 and Step 9. Validator must pass.
+Same as Step 8, Step 8.5 (if `--review-external`), and Step 9. Validator must pass.
 
 ## Output contract
 
