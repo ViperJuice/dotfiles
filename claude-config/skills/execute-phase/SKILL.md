@@ -69,14 +69,14 @@ Build the lane graph. Topologically sort it; reject on cycle with a clear error.
 
 ### Step 2 — Preflight
 
-- **Run `scripts/verify_harness.sh <merge-target>`.** This script enforces the hard gates deterministically: git + git-worktree available, inside a work tree, merge-target branch exists locally, working tree clean (allowlist: `.claude/worktrees/`, `.claude/execute-phase-state.json`), `.gitignore` covers worktree paths. **Non-zero exit blocks dispatch.** The dirty-tree check has no orchestrator-side override — if it fails, you MUST invoke `AskUserQuestion` with the options `[commit the changes as a chore, stash for the duration of the phase, abort /execute-phase]` and take the user's answer. Do not rationalize around a dirty tree even if the diff looks like "noise" — test-run artifacts and config drift are state changes that deserve a commit decision.
+- **Run `scripts/verify_harness.sh <merge-target>`.** Enforces the hard gates: git + git-worktree available, inside a work tree, merge-target branch exists locally, working tree clean (allowlist: `.claude/worktrees/`, `.claude/execute-phase-state.json`), `.gitignore` covers worktree paths. **Non-zero exit blocks dispatch.** On dirty-tree failure, invoke `AskUserQuestion` with `[commit the changes as a chore, stash for the duration of the phase, abort /execute-phase]` and take the user's answer. No override.
 - Record merge target = current branch (or `$EXECUTE_MERGE_TARGET`).
 - Sanity check: every symbol appearing in any lane's `Interfaces consumed` must either be produced by an upstream lane's `Interfaces provided` OR be pre-existing (skip unknown symbols with a warning, don't hard-fail).
 - If `--dry-run`: print the topological schedule with per-lane model/thinking assignments (see Step 3) and stop here.
 
 ### Step 2a — Worktree hygiene preflight
 
-Prior sessions that didn't complete Step 7's post-merge cleanup leave stale worktrees and branches in `.claude/worktrees/`. Prune them at phase start. Skip on `--resume` (resume continues a partial phase whose worktrees are still live).
+Prune stale worktrees in `.claude/worktrees/` at phase start. Skip on `--resume`.
 
 ```bash
 bash "$(git rev-parse --show-toplevel)/.claude/skills/execute-phase/scripts/sweep_stale_worktrees.sh"
@@ -121,7 +121,7 @@ Create one team for the phase:
 - **Team name**: `phase-<PHASE_ALIAS>` (e.g., `phase-p1`).
 - **Teammates**: one per lane, `subagent_type: "general-purpose"`. Teammate names use the allocator — see Step 5.
 
-Registering teammates via TeamCreate lets the main thread re-address them later via `SendMessage` for retry rounds without paying the cost of a fresh Agent spawn.
+TeamCreate registration enables `SendMessage` retry rounds without fresh Agent spawns.
 
 ### Step 5 — Dispatch loop
 
@@ -129,11 +129,11 @@ State per lane: `pending | running | verify-ok | merged | failed`. State per gat
 
 Repeat until all lanes are `merged` or halt is triggered:
 
-1. **Find ready lanes** — `pending` lanes whose upstream lanes are all `merged` AND all consumed `IF-0-*` gates are `closed`. Cap the dispatch batch at `EXECUTE_MAX_PARALLEL_LANES` (default 2). Slice the eligible set to the first N (lower SL-ID first) and queue the rest. Wave dispatch with a small N shrinks the multi-lane staleness window — each merge makes the other running lanes' bases stale — without losing meaningful parallelism.
+1. **Find ready lanes** — `pending` lanes whose upstream lanes are all `merged` AND all consumed `IF-0-*` gates are `closed`. Cap the dispatch batch at `EXECUTE_MAX_PARALLEL_LANES` (default 2). Slice the eligible set to the first N (lower SL-ID first) and queue the rest.
 
-2. **Allocate worktree names**. For each ready lane, run `scripts/allocate_worktree_name.sh <sl-id>`. The emitted name (e.g., `lane-sl-1-20260418T144536-nxz5`) is substituted into both the `Agent(name=…)` and the briefed `EnterWorktree(name=…)`. Bare `lane-<sl-id>` names collide under rapid in-process dispatch; unique names do not.
+2. **Allocate worktree names**. For each ready lane, run `scripts/allocate_worktree_name.sh <sl-id>`. Substitute the emitted name (e.g., `lane-sl-1-20260418T144536-nxz5`) into both `Agent(name=…)` and the briefed `EnterWorktree(name=…)`. Bare `lane-<sl-id>` names collide under rapid dispatch.
 
-3. **Dispatch in parallel** — single message with one `Agent(team_name: "phase-<alias>", name: "<allocated-name>", subagent_type: "general-purpose", model: "<assigned>")` call per ready lane. Sequential dispatch within a wave is a bug. Do NOT pass `isolation: "worktree"` when `team_name` is also set — the harness silently runs the teammate in-process and drops the isolation kwarg. The working pattern is `team_name` for coordination + teammate-called `EnterWorktree` for filesystem isolation.
+3. **Dispatch in parallel** — single message with one `Agent(team_name: "phase-<alias>", name: "<allocated-name>", subagent_type: "general-purpose", model: "<assigned>")` call per ready lane. Sequential dispatch within a wave is a bug. Do NOT pass `isolation: "worktree"` when `team_name` is set — the harness drops `isolation` in that combination. Use `team_name` for coordination + teammate-called `EnterWorktree` for filesystem isolation.
 
 4. **Teammate brief** contains:
    - **Worktree isolation (mandatory, first tool call)**: Load `EnterWorktree` via `ToolSearch(query="select:EnterWorktree,ExitWorktree")` if not already in the tool registry. Call `ExitWorktree(action="keep")` FIRST (no-op if no session active; clears any stale session-state flag inherited from a prior teammate). Then call `EnterWorktree(name: "<allocated-name>")` as the very next tool call, BEFORE any file operation. Every subsequent edit/commit goes into that worktree. At the end, call `ExitWorktree(action: "keep")` so the worktree and branch remain available for the orchestrator to merge.
@@ -142,8 +142,8 @@ Repeat until all lanes are `merged` or halt is triggered:
    - The merge target branch and the orchestrator's current tip SHA, injected as `<TIP_SHA>` (used by the stale-base check below).
    - The lane's test → impl → verify task list.
    - Thinking-level guidance matching the lane's profile.
-   - **Stale-base discipline**: AFTER `EnterWorktree` returns (cwd now in your worktree), and BEFORE any code change, run `git rebase main` (or `git merge main --no-ff -m "merge: incorporate prior-lane foundation"`). Verify with `git merge-base --is-ancestor <TIP_SHA> HEAD && echo OK || echo STALE`. Repeat the rebase IMMEDIATELY before your final commit — peer lanes may have merged during your run. If the rebase produces conflicts, STOP and report rather than resolving silently. Silent `git reset --hard` or `git checkout HEAD~N -- …` in a stale worktree produces commits that destroy peer-lane work on `--no-ff` merge.
-   - **Structured-reply instruction**: "When done, reply with JSON `{lane, verify_exit_code, failed_tasks, notes, commit_sha, branch, worktree_path}`. All seven fields are mandatory. `branch` and `worktree_path` come from `EnterWorktree`'s return value; they let the orchestrator verify isolation actually fired. Going idle without the full envelope forces an extra `SendMessage` round-trip."
+   - **Stale-base discipline**: AFTER `EnterWorktree` returns and BEFORE any code change, run `git rebase main` (or `git merge main --no-ff -m "merge: incorporate prior-lane foundation"`). Verify with `git merge-base --is-ancestor <TIP_SHA> HEAD && echo OK || echo STALE`. Repeat the rebase immediately before your final commit. On conflicts, STOP and report — do not resolve silently. Never `git reset --hard` or `git checkout HEAD~N -- …` in a stale worktree; this destroys peer-lane work on `--no-ff` merge.
+   - **Structured-reply instruction**: "When done, reply with JSON `{lane, verify_exit_code, failed_tasks, notes, commit_sha, branch, worktree_path}`. All seven fields are mandatory. `branch` and `worktree_path` come from `EnterWorktree`'s return value."
 
 5. **Await completions**. For each:
    - `verify_exit_code == 0` → run gate verification (Step 6). On green → auto-merge (Step 7). Mark lane `merged`, flip produced gates to `closed`, update the lane's `TaskCreate`'d task to `completed`.
@@ -166,7 +166,7 @@ Any failure here counts as a lane failure and triggers retry-once.
 
 ### Step 6.5 — Parent-tree leakage check
 
-Worktree-isolated teammates occasionally write into the parent checkout — path resolution inside Edit/Write tools sometimes resolves absolute-looking paths against the parent repo. `git merge --no-ff` then aborts with "untracked files would be overwritten". A silent `EnterWorktree` fallback (collision on the worktree name) also manifests here as the parent sitting on the lane's branch with a clean tree.
+Detects two isolation failure modes before merge: (a) teammate writes landing in the parent checkout, (b) `EnterWorktree` falling back to in-place branch creation on the parent.
 
 Run:
 ```bash
@@ -177,20 +177,19 @@ Verdicts (emitted on stdout; details on stderr):
 
 - **`CLEAN`** — proceed to Step 7.
 - **`LEAKAGE_DETECTED`** (dirty files overlap the lane's owned globs):
-  1. Verify byte-equality: for each leaked path, `git diff <lane-sha> -- <path>` must be zero lines. Confirms the leak is a redundant copy of already-committed lane work, not independent uncommitted editing.
-  2. Clean the parent: `git checkout -- <modified>` for tracked changes; `rm <untracked>` for new files. Do NOT `git stash` — stash can resurface the same leak at a later checkout/merge.
+  1. Verify byte-equality: for each leaked path, `git diff <lane-sha> -- <path>` must be zero lines (confirms the leak is a redundant copy of committed lane work). If non-zero, treat as independent uncommitted work and STOP.
+  2. Clean the parent: `git checkout -- <modified>` for tracked changes; `rm <untracked>` for new files. Do NOT `git stash`.
   3. Record in `.claude/execute-phase-state.json` under the lane's `notes`.
   4. Proceed to Step 7.
 - **`UNRELATED_DIRTY_TREE`** (dirty files outside the lane's globs) → STOP. Ask via `AskUserQuestion` whether to stash, commit, or abort.
-- **`PARENT_ON_WRONG_BRANCH`** (tree clean but parent on a non-merge-target branch — `EnterWorktree` silently fell back to in-place branch creation):
-  1. The lane's commit is on a branch; isolation just didn't fire.
-  2. Merge by SHA per the no-branch-trust rule below (Step 7).
-  3. Run `git checkout <merge-target>` in the parent BEFORE Step 7's worktree cleanup, or `git worktree remove` will refuse (the parent holds a worktree for the lane branch).
-  4. Record in state: parent-fallback note.
+- **`PARENT_ON_WRONG_BRANCH`** (tree clean but parent on a non-merge-target branch — `EnterWorktree` fell back to in-place branch creation):
+  1. Merge by SHA per Step 7.
+  2. Run `git checkout <merge-target>` in the parent BEFORE Step 7's worktree cleanup — otherwise `git worktree remove` refuses.
+  3. Record parent-fallback note in state.
 
 ### Step 7 — Auto-merge
 
-**Branch discovery.** Don't trust briefed branch names — the harness sometimes auto-names branches, and lanes occasionally squat on sibling worktrees. Resolve from the reply envelope's `commit_sha`: `git log --oneline -1 <commit_sha>` + `git worktree list` to confirm the SHA and find the actual branch/worktree.
+**Branch discovery.** Resolve the lane's branch/worktree from the reply envelope's `commit_sha` via `git log --oneline -1 <commit_sha>` + `git worktree list`. Never trust the briefed branch name.
 
 **Cross-lane file-touch audit.** Before the destructiveness check, run:
 
@@ -201,8 +200,8 @@ python scripts/audit_lane_file_touches.py <lane-sha> <plan-doc-path> <this-lane-
 Verdicts:
 
 - **`CLEAN`** → every touched file is within this lane's `Owned files` globs. Proceed.
-- **`PEER_INTRUSION`** → the lane touched files owned by another lane (defensive test mocks are the common case). Stderr lists peer + files. Pause on `AskUserQuestion`: merge anyway, bounce the lane, or ask the teammate to revert the peer edits.
-- **`ORPHAN_FILES`** → the lane touched files outside every lane's globs. Probable bug in the plan or the impl — surface to user.
+- **`PEER_INTRUSION`** → the lane touched files owned by another lane. Stderr lists peer + files. Pause on `AskUserQuestion`: merge anyway, bounce the lane, or ask the teammate to revert the peer edits.
+- **`ORPHAN_FILES`** → the lane touched files outside every lane's globs. Surface to user — likely plan or impl bug.
 
 **Pre-merge destructiveness check** — lanes that committed against a stale base can wipe peer-lane work on `--no-ff` merge. Use the three-outcome script:
 
@@ -215,14 +214,14 @@ Where `<whitelist-path>` is a file (one path per line) of deletions the lane leg
 Verdicts:
 
 - **`SAFE`** — deletion list empty or all whitelisted. Merge with `git merge --no-ff <lane-sha>`.
-- **`STALE_BASE_DETECTED`** — the lane branched from a pre-peer-merge main and doesn't contain peer files; it never actively deleted anything. Git's 3-way merge will preserve peer work. Preview to confirm, then finalize:
+- **`STALE_BASE_DETECTED`** — lane branched from a pre-peer-merge main but did not actively delete. Preview, then finalize with the 3-way merge:
   ```bash
   git merge --no-ff --no-commit <lane-sha>
-  ls <peer-lane-owned-paths>   # should exist
+  ls <peer-lane-owned-paths>   # must exist
   git commit --no-edit
   ```
-  Do NOT salvage — salvage loses the lane's original commit lineage unnecessarily.
-- **`CONFLICT`** — the lane actively removed files (`git reset --hard`, `git checkout HEAD~N -- …`, or `git add -A` after clobbering). DO NOT `--no-ff` merge. Salvage:
+  Do NOT salvage — salvage loses commit lineage.
+- **`CONFLICT`** — lane actively removed files. DO NOT `--no-ff` merge. Salvage:
   ```bash
   git checkout <lane-sha> -- <lane's owned paths from the plan doc>
   git commit -m "feat(<phase>,<sl-id>): <subject>
@@ -230,7 +229,7 @@ Verdicts:
   Salvage of <SL-ID> lane work: lane commit was based on stale main and
   would have deleted <peer lanes' files>. Cherry-picked in-scope additions only."
   ```
-  This is a successful completion, not a failure — no retry needed. The destructive diff is a symptom of isolation breakdown (shared worktree, stale rebase), not of bad code.
+  Count this as a successful completion — no retry.
 
 **Merge conflict** (non-destructive case) → treat as lane failure: `git merge --abort`, surface the conflict to the teammate via `SendMessage` asking it to rebase inside its worktree, then retry the merge.
 
@@ -246,16 +245,16 @@ if [[ -n "$packages" ]]; then
 fi
 ```
 
-Non-zero exit means the merge broke package load (eager re-export + dropped symbol, circular import, missing import). The merge is already on `main`, so `git reset --hard HEAD~` to unwind, then retry per Step 8. Second failure halts the phase.
+On non-zero exit, the merge broke package load. Unwind with `git reset --hard HEAD~`, then retry per Step 8. Second failure halts the phase.
 
-**Post-merge cleanup.** `git worktree remove --force` any worktrees the lane used. `git branch -D` every lane branch — use `-D` not `-d` because salvaged work leaves the original branch unreachable from the merge target. If Step 6.5 returned `PARENT_ON_WRONG_BRANCH`, `git checkout <merge-target>` in the parent BEFORE removing worktrees.
+**Post-merge cleanup.** `git worktree remove --force` any worktrees the lane used. `git branch -D` (not `-d`) every lane branch — salvaged work leaves branches unreachable from the merge target. If Step 6.5 returned `PARENT_ON_WRONG_BRANCH`, `git checkout <merge-target>` in the parent BEFORE removing worktrees.
 
 ### Step 8 — Retry-once, then halt
 
 On first failure for a lane, decide between SendMessage-resume and kill-and-respawn based on whether the lane committed anything:
 
-- **`commit_sha` empty AND `verify_exit_code != 0`** (teammate STOPed during preflight, no work done): kill via `TaskStop` and re-`Agent`-spawn fresh. Resuming a STOPed teammate risks worktree-isolation breakdown — the original worktree may have been reaped, and the resumed instance writes into the parent checkout instead.
-- **`commit_sha` populated AND verify failed** (teammate did work but it broke): re-address the same named teammate via `SendMessage`. Context preservation matters here; the teammate's understanding of its branch state is hard to rebuild from scratch.
+- **`commit_sha` empty AND `verify_exit_code != 0`** (teammate STOPped during preflight, no work done): kill via `TaskStop` and re-`Agent`-spawn fresh. Never resume a STOPped teammate with no commits — the worktree may be reaped and the resumed instance writes into the parent.
+- **`commit_sha` populated AND verify failed** (teammate did work but it broke): re-address the same named teammate via `SendMessage` to preserve branch-state context.
 
 In either case, the brief includes: the failure log, the escalated model+thinking hint, and the instruction to fix the failing task and re-run verify.
 
@@ -272,7 +271,7 @@ After all lanes merged:
 1. Run every command under the plan doc's `## Verification` section against the merged tree.
 2. Run every assertion under `## Acceptance Criteria` that can be mechanically checked.
 3. **Team teardown**. Try `TeamDelete` first. If it blocks (in-process teammates ignore `shutdown_request`), fall back to filesystem cleanup: `bash scripts/team_teardown.sh phase-<alias>` (rm on `~/.claude/teams/<team>/` + `~/.claude/tasks/<team>/`).
-4. **Kill leftover background processes**. Lane teammates occasionally spawn `next dev` or worker processes that outlive their termination. Run `ps aux | grep -E "next dev|node.*dev"` and `kill` any stragglers.
+4. **Kill leftover background processes**. Run `ps aux | grep -E "next dev|node.*dev"` and `kill` any stragglers spawned by lane teammates.
 5. Emit final summary:
    - Lanes merged (with merge-commit SHAs)
    - Gates closed
@@ -341,22 +340,22 @@ Both paths are auto-added to `.gitignore` in Step 2.
 
 ## Teamwork posture (hard rules)
 
-- **Main thread = dispatcher.** Reads plan doc + TaskList + git state. Never Greps or Reads source code during execution, except to run the pre-merge destructiveness check and audit (Step 7) — those are load-bearing.
+- **Main thread = dispatcher.** Read plan doc + TaskList + git state. Do not Grep/Read source code during execution, except for the Step 7 destructiveness check and file-touch audit.
 - **Parallel-by-default.** Ready lanes dispatch in a single message, every round.
-- **Name every teammate via the allocator.** Bare `lane-<sl-id>` names collide in rapid in-process dispatch.
+- **Name every teammate via the allocator.** Bare `lane-<sl-id>` names collide in rapid dispatch.
 - **TaskCreate tasks are the source of truth for lane status.** Update them as lanes transition.
 - **No speculative refactoring.** Lane teammates must stay within their `Owned files` globs; reject their work at gate verification if they wandered. Use the file-touch audit to catch this pre-merge.
-- **Never trust a branch name.** Resolve work by commit SHA from the reply envelope, not by branch convention. The harness sometimes auto-names branches and lanes occasionally squat on sibling worktrees.
+- **Never trust a branch name.** Resolve work by `commit_sha` from the reply envelope.
 - **Never `--no-ff` merge without the destructiveness check.**
-- **Never resume a STOPed teammate with no commits.** Kill + respawn instead; the worktree is gone and the resumed instance writes into the parent.
-- **Never rationalize past a dirty-tree preflight fail.** `verify_harness.sh` is the gate. If check (4) fails, the ONLY paths forward are: (a) commit the diff as a `chore:`, (b) `git stash push -u` and restore post-phase, (c) abort. No "it's just a test-run artifact" exceptions.
+- **Never resume a STOPped teammate with no commits.** Kill + respawn.
+- **Never override the dirty-tree preflight.** `verify_harness.sh` is the gate. Only paths forward: (a) commit as `chore:`, (b) `git stash push -u` and restore post-phase, (c) abort.
 
 ## Browser verification capabilities
 
-When a plan's `## Verification` section includes Playwright/e2e commands or lane tasks ask for browser smoke-testing, use these tools rather than skipping the step:
+When a plan's `## Verification` section includes Playwright/e2e commands or lane tasks ask for browser smoke-testing, run them:
 
-- **Playwright via PMCP** — `pmcp_invoke(tool_id="playwright::browser_navigate", ...)` and related `playwright::*` tools. Preferred for all browser automation.
-- **Chrome DevTools Protocol (CDP)** — for low-level debugging (performance traces, CPU profiling).
+- **Playwright via PMCP** — `pmcp_invoke(tool_id="playwright::browser_navigate", ...)` and related `playwright::*` tools. Default.
+- **Chrome DevTools Protocol (CDP)** — low-level debugging (performance traces, CPU profiling).
 - **`claude-in-chrome`** — extension-context automation only.
 
 The PMCP Playwright server provisions on demand. If the repo lacks a Playwright config, add one in the lane rather than deferring the test.

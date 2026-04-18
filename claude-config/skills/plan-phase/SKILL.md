@@ -62,7 +62,7 @@ ToolSearch(query: "select:TaskCreate,AskUserQuestion,ExitPlanMode")
 
 ## Workflow (delegation-first)
 
-The main thread is an orchestrator only. It briefs specialists, synthesizes their output, enforces consensus, writes the final doc, and emits tasks. It does not `Grep`/`Read` the codebase directly — that is the Explore teammates' job. If the main thread is reaching for `Grep` or `Read` on anything other than the spec file and the plan file, the teammate's brief was incomplete; re-brief via `SendMessage`.
+The main thread is an orchestrator only: brief specialists, synthesize output, enforce consensus, write the final doc, emit tasks. See `## Teamwork & delegation posture` for the posture rules.
 
 ### Step 1 — Resolve spec path, phase, and PHASE_ID
 
@@ -280,7 +280,7 @@ Before writing the plan doc, verify:
 - **Parallel-by-default.** Step 2 (Explore) and Step 3a (consensus Plan) MUST be issued as a single message with multiple `Agent` tool calls.
 - **Name every teammate.** Set `name:` on every `Agent` call so you can re-address via `SendMessage` without losing context or paying to restart.
 - **Task list as source of truth for the lane DAG.** Step 6's per-lane `TaskCreate` is how the plan becomes actionable; each lane task is addressable by ID for `execute-phase`.
-- **Hand-off to `execute-phase`.** After `ExitPlanMode` approval, invoke `/execute-phase <plan-doc-path>`. That skill reads the plan doc + task list, validates it, then registers a team (`TeamCreate`) and spawns one `Agent(team_name=…, name="<allocated-name>", subagent_type="general-purpose")` per lane. Each teammate's brief includes a mandatory `ExitWorktree`-then-`EnterWorktree` preamble so filesystem work lands in an isolated worktree branch; the orchestrator resolves that branch via the teammate's reply-envelope `commit_sha` and merges with `--no-ff`. Lanes merge to main only after their lane-local verify task passes and every interface freeze gate for that lane's consumers is green. Do NOT pass `isolation: "worktree"` alongside `team_name` — the harness silently runs the teammate in-process and drops the isolation kwarg, producing zero worktrees.
+- **Hand-off to `execute-phase`.** After `ExitPlanMode` approval, invoke `/execute-phase <plan-doc-path>`. See that skill for the full execution contract (team creation, worktree isolation, merge policy). Do NOT pass `isolation: "worktree"` alongside `team_name` — the harness drops `isolation` in that combination.
 - **Manual hand-off (when `execute-phase` is unavailable).** Run `python scripts/validate_plan_doc.py <plan-doc-path>` first. Then execute each lane in one of two ways:
   - (a) **Standalone** — `Agent(isolation: "worktree", name: "<SL-ID>", subagent_type: "general-purpose")` without `team_name`. The `isolation` kwarg is honored in this form; loses team coordination.
   - (b) **Teamed** — `TeamCreate` + `Agent(team_name=…, name="<SL-ID>", subagent_type="general-purpose")`, and the teammate's first tool call is `EnterWorktree` (load via `ToolSearch(query="select:EnterWorktree")`). Worktree via tool, team coordination preserved.

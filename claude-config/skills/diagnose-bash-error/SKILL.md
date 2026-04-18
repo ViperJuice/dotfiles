@@ -7,7 +7,7 @@ description: "Diagnostic guide for Bash command failures. Use when a Bash comman
 
 ## The Rule
 
-When a Bash command fails, NEVER re-run it without first reading the full stderr output and categorizing the error. The single most common waste pattern is retrying the same command hoping for a different result.
+When a Bash command fails, read the full stderr and categorize the error against the patterns below before retrying.
 
 ## Decision Tree
 

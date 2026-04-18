@@ -1,6 +1,6 @@
 ---
 name: file-read-cache
-description: "Guidelines for avoiding redundant file reads during a session. Use throughout any coding session. Instructs Claude to track which files have been read and avoid re-reading unchanged files. Addresses the most common anti-pattern: duplicate file reads (81% of sessions, 300-400 wasted calls/week across all projects)."
+description: "Guidelines for avoiding redundant file reads during a session. Use throughout any coding session. Instructs Claude to track which files have been read and avoid re-reading unchanged files."
 ---
 
 # File Read Cache
@@ -27,7 +27,3 @@ If you already have the contents and nothing modified the file → use your exis
 ## Subagent Exception
 
 This rule applies within a SINGLE conversation. Subagents have separate context and MUST read files independently — they cannot access the parent's prior reads. Similarly, if you ARE a subagent, you must read everything you need regardless of what the parent may have read.
-
-## Scale of Impact
-
-This is the most common anti-pattern across all projects: 152 duplicate reads in EZBidPro, 210+ in subagent sessions, 200+ in editorial projects. Each avoided re-read saves a tool call and context window space.

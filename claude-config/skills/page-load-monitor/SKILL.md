@@ -1,6 +1,6 @@
 ---
 name: page-load-monitor
-description: "Intelligent browser page load failure handling. Use when browser screenshot or navigation operations fail, especially with 'Frame showing error page' or timeout errors. Provides escalating diagnostic steps (console, network, alternatives) instead of blind retry loops. Addresses the 47% of editorial sessions with page load failures averaging 4-6 retry attempts each."
+description: "Intelligent browser page load failure handling. Use when browser screenshot or navigation operations fail, especially with 'Frame showing error page' or timeout errors. Provides escalating diagnostic steps (console, network, alternatives) instead of blind retry loops."
 ---
 
 # Page Load Monitor

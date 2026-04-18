@@ -69,7 +69,7 @@ Use when you need to inspect or interact with the actual browser the user sees v
 
 Tools: `mcp__claude-in-chrome__*`
 
-**Restricted to EZBidPro project tree** — disabled globally via `"claude-in-chrome": false` in `enabledPlugins` (`~/.claude/settings.json`) to prevent MCP contention (single WebSocket, multiple sessions = 7+ minute hangs). Enabled only in EZBidPro via project-level `enabledPlugins`.
+**Restricted to EZBidPro project tree** — disabled globally via `"claude-in-chrome": false` in `enabledPlugins` (`~/.claude/settings.json`). Enabled only in EZBidPro via project-level `enabledPlugins`. The underlying transport is a single WebSocket; only one session can hold it at a time.
 
 Use only when you need access to Chrome extension internals:
 - Extension popup/sidebar DOM
@@ -77,7 +77,7 @@ Use only when you need access to Chrome extension internals:
 - Service worker contexts
 - Extension-injected content scripts
 
-**Single-session limitation**: Only one Claude Code session can use claude-in-chrome at a time. If tools hang with no response, another session likely holds the WebSocket.
+If tools hang with no response, another session holds the WebSocket — stop and surface to the user.
 
 ## Port Deconfliction
 
@@ -90,23 +90,19 @@ Never configure Playwright to use port 9222 unless intentionally connecting to t
 
 For full infrastructure details, see [references/INFRASTRUCTURE.md](references/INFRASTRUCTURE.md).
 
-## CDP vs claude-in-chrome for Extension Work
+## CDP for Extension Work
 
-CDP **can** access extension targets when Chrome has a persistent profile and extensions loaded. The headed Chrome on `:9222` already meets these requirements.
+CDP can access extension targets on the headed Chrome at `:9222` (persistent profile, extensions loaded).
 
-### Inspecting extensions via CDP
+Procedure:
+1. Enumerate targets via `Target.getTargets`.
+2. Filter for `type: "service_worker"` or `"background_page"` with `url` starting with `chrome-extension://`.
+3. Create a `CDPSession` to the target; enable `Runtime`, `Log`, `Network`, `Storage`.
+4. Open extension popups at `chrome-extension://<id>/popup.html` directly in a tab and drive with Playwright selectors.
 
-1. Enumerate targets: `Target.getTargets` returns all browser targets including extensions
-2. Find extension targets: look for `type: "service_worker"` or `"background_page"` with `url` starting with `chrome-extension://`
-3. Create a `CDPSession` to the target and enable domains: `Runtime`, `Log`, `Network`, `Storage`
-4. Extension popup pages are regular `chrome-extension://<id>/popup.html` URLs — open directly in a tab and use Playwright selectors
+Rules:
+- For MV3 service workers, subscribe to `Target.targetCreated` / `Target.targetDestroyed` and reattach — they unload frequently.
+- Access `chrome.storage` via `Runtime.evaluate` on the attached target.
+- For content scripts, pass the correct `executionContextId` to `Runtime.evaluate` (isolated worlds).
 
-### Caveats
-
-- **MV3 service workers unload frequently** — must listen for `Target.targetCreated` / `Target.targetDestroyed` to reattach
-- **`chrome.storage` access** requires evaluating JS in the extension context via `Runtime.evaluate` on the attached target
-- **Content scripts** run in isolated worlds — use `Runtime.evaluate` with the correct `executionContextId`
-
-### When to use claude-in-chrome instead
-
-claude-in-chrome is a pre-built convenience layer with tools already wired to the extension. Its value is zero-setup access to extension internals without manual target wiring. The tradeoff is the single-session WebSocket limitation.
+Use claude-in-chrome instead when you need zero-setup extension access and no other session holds its WebSocket.

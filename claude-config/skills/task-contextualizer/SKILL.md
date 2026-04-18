@@ -1,15 +1,11 @@
 ---
 name: task-contextualizer
-description: "Guide for preparing rich context when spawning subagent tasks. Use before creating any Task tool call, especially for Explore or general-purpose subagents. Provides templates for task prompts that include necessary file paths, architecture context, and scope boundaries. Prevents subagent context starvation (84% of subagent sessions waste calls rediscovering project structure)."
+description: "Guide for preparing rich context when spawning subagent tasks. Use before creating any Task tool call, especially for Explore or general-purpose subagents. Provides templates for task prompts that include necessary file paths, architecture context, and scope boundaries."
 ---
 
 # Task Contextualizer
 
-## Overview
-
-A subagent spawned with "fix the bug in pageContext.ts" will spend 10-15 Read calls discovering the file structure before it can start. A subagent spawned with the same task PLUS 5 key file paths and architecture notes goes straight to the fix — a 40-50% reduction in wasted calls.
-
-Subagents do NOT inherit parent context. They start fresh. Every file you've read, every search result you've seen — the subagent knows none of it.
+Subagents do not inherit parent context. Brief every Task call with specific file paths, architecture, and scope so the subagent can start work immediately instead of rediscovering the project.
 
 ## Mandatory Checklist
 

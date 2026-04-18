@@ -1,6 +1,6 @@
 ---
 name: batch-verify
-description: "Workflow for batching edit verification instead of checking after each individual change. Use when making multiple related file edits (3+ files) in a coding session. Groups syntax checks, type checking, and test runs into a single verification phase after all edits are complete, instead of scattering verification calls throughout. Reduces 15-20% token overhead from edit-verify-edit-verify cycles."
+description: "Workflow for batching edit verification instead of checking after each individual change. Use when making multiple related file edits (3+ files) in a coding session. Groups syntax checks, type checking, and test runs into a single verification phase after all edits are complete, instead of scattering verification calls throughout."
 ---
 
 # Batch Verify

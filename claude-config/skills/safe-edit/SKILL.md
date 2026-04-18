@@ -1,6 +1,6 @@
 ---
 name: safe-edit
-description: "Checklist for safe file editing operations. Use before any Edit or Write tool call. Enforces read-before-edit pattern, detects potential conflicts from external modifications, and prevents common edit failures. Addresses the 32+ retry failures from edit-before-read errors and 23 failed subagent writes."
+description: "Checklist for safe file editing operations. Use before any Edit or Write tool call. Enforces read-before-edit pattern, detects potential conflicts from external modifications, and prevents common edit failures."
 ---
 
 # Safe Edit

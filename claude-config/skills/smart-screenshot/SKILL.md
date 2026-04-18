@@ -1,6 +1,6 @@
 ---
 name: smart-screenshot
-description: "Guidelines for efficient browser screenshot usage. Use when performing browser automation tasks involving screenshots, especially in UI testing sessions. Provides strategies to avoid redundant screenshot captures (which waste 14-22% of calls in affected sessions), intelligent wait strategies for page loads, and alternatives when screenshots fail repeatedly."
+description: "Guidelines for efficient browser screenshot usage. Use when performing browser automation tasks involving screenshots, especially in UI testing sessions. Provides strategies to avoid redundant screenshot captures, intelligent wait strategies for page loads, and alternatives when screenshots fail repeatedly."
 ---
 
 # Smart Screenshot
