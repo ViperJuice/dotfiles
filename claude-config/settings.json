@@ -18,6 +18,7 @@
     "claude-in-chrome": false
   },
   "effortLevel": "high",
+  "advisorModel": "opus",
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true
 }
