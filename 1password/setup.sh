@@ -14,6 +14,18 @@ if ! command -v op &>/dev/null; then
     return 0 2>/dev/null || exit 0
 fi
 
+# The SSH agent + signing integration needs the 1Password DESKTOP app
+# (not just the CLI). The desktop installs /opt/1Password/op-ssh-sign
+# and exposes the agent socket. Headless servers typically have only `op`
+# CLI — setting gpg.ssh.program or IdentityAgent on those hosts will
+# break SSH auth and git commit signing. Detect the desktop bits first.
+OP_SSH_SIGN="/opt/1Password/op-ssh-sign"
+if [ ! -x "$OP_SSH_SIGN" ]; then
+    echo "  ⚠ 1Password desktop (/opt/1Password/op-ssh-sign) not found — skipping SSH agent + signing integration"
+    echo "    (This is normal on headless servers. Git will fall back to native ssh-keygen signing.)"
+    return 0 2>/dev/null || exit 0
+fi
+
 echo "Setting up 1Password integration..."
 
 # =========================================================================
