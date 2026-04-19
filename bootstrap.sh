@@ -461,9 +461,6 @@ fi
 ln -sf "$DOTFILES_DIR/claude-config/statusline-custom.sh" ~/.claude/statusline-custom.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify.sh" ~/.claude/notify.sh
 ln -sf "$DOTFILES_DIR/claude-config/notify-clear.sh" ~/.claude/notify-clear.sh
-ln -sf "$DOTFILES_DIR/claude-config/agent-pane.sh" ~/.claude/agent-pane.sh
-ln -sf "$DOTFILES_DIR/claude-config/bash-pane.sh" ~/.claude/bash-pane.sh
-ln -sf "$DOTFILES_DIR/claude-config/stacked-pane.sh" ~/.claude/stacked-pane.sh
 ln -sf "$DOTFILES_DIR/claude-config/AGENTS.md" ~/.claude/AGENTS.md
 ln -sf "$DOTFILES_DIR/claude-config/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -sf "$DOTFILES_DIR/scripts/editor-remote.sh" ~/.claude/editor-remote.sh
@@ -501,7 +498,7 @@ done
 for agent in "$DOTFILES_DIR/claude-config/agents/"*.md; do
     [ -f "$agent" ] && ln -sf "$agent" ~/.claude/agents/
 done
-chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh ~/.claude/agent-pane.sh ~/.claude/bash-pane.sh ~/.claude/stacked-pane.sh
+chmod +x ~/.claude/statusline-custom.sh ~/.claude/notify.sh ~/.claude/notify-clear.sh
 echo "Linked Claude config files"
 
 # OpenCode: shared + opencode-specific commands

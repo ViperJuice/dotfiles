@@ -3,8 +3,7 @@
 # - Renames pane with bell icon (using --pane-id to target correct pane)
 # - Renames tab with bell icon (always visible)
 # - Plays audio notification
-#
-# NOTE: Requires Zellij with --pane-id support (custom fork)
+# Requires upstream Zellij >= v0.44.1 (rename-pane -p is built in).
 
 [[ -z "$ZELLIJ" ]] && exit 0
 

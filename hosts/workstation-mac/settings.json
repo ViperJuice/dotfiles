@@ -16,16 +16,6 @@
       {
         "hooks": [{ "type": "command", "command": "~/.claude/notify-clear.sh" }]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [{ "type": "command", "command": "~/.claude/stacked-pane.sh --type agent" }]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "~/.claude/stacked-pane.sh --type shell" }]
-      }
     ]
   },
   "statusLine": {
