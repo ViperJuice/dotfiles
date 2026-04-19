@@ -35,3 +35,6 @@ __pycache__/
 # Skill close-out artifacts (per-skill, generated each run)
 claude-config/skills/*/reflections/
 claude-config/skills/*/handoff.md
+
+# Generated plan output (skill-improvement-planner)
+claude-config/skills/*/plans/
